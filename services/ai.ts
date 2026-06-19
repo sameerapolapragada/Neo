@@ -14,20 +14,95 @@ export interface AIService {
   generateMissingMoments(pet: Pet): Promise<MissingMomentsContent>;
 }
 
-function pickByFrequency(frequency: string, high: string, mid: string, low: string): string {
-  if (frequency === 'Daily' || frequency === 'Several times a week') return high;
-  if (frequency === 'Weekly' || frequency === 'A few times a month') return mid;
-  return low;
+type FrequencyTier = 'high' | 'mid' | 'low';
+
+function frequencyTier(frequency: string): FrequencyTier {
+  const normalized = frequency.toLowerCase();
+  if (
+    normalized === 'daily' ||
+    normalized === 'every day' ||
+    normalized === 'several times a week'
+  ) {
+    return 'high';
+  }
+  if (normalized === 'weekly' || normalized === 'once a week') {
+    return 'mid';
+  }
+  return 'low';
 }
 
-function buildActivityLine(pet: Pet, answers: LifestyleAnswersInput): string {
-  const play = pickByFrequency(
-    answers.play_frequency,
-    'playful routines',
-    'cozy routines',
-    'quiet bonding moments',
-  );
-  return `${pet.name} enjoys ${answers.favorite_activities.toLowerCase()} with ${play} woven into everyday life.`;
+function activityPhrase(activities: string): string | null {
+  const trimmed = activities.trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('fetch') || lower.startsWith('walk') || lower.startsWith('park')) {
+    return trimmed;
+  }
+  return trimmed.charAt(0).toLowerCase() + trimmed.slice(1);
+}
+
+function buildTodayLine(pet: Pet, answers: LifestyleAnswersInput): string {
+  const play = frequencyTier(answers.play_frequency);
+  const activity = activityPhrase(answers.favorite_activities);
+
+  if (play === 'high') {
+    return activity
+      ? `${pet.name} enjoys your company—especially during ${activity}—and feels safe, loved, and happy in their daily routine.`
+      : `${pet.name} enjoys your company and feels safe, loved, and happy in their daily routine.`;
+  }
+
+  if (play === 'mid') {
+    return `${pet.name} looks forward to time with you and finds comfort in the routines you share.`;
+  }
+
+  if (answers.play_frequency.toLowerCase() === 'not yet') {
+    return `${pet.name} is just getting to know you, and the gentle moments you share already matter.`;
+  }
+
+  return `${pet.name} cherishes quiet time with you and feels secure in the bond you're building.`;
+}
+
+function buildSixMonthsLine(pet: Pet, answers: LifestyleAnswersInput): string {
+  const environments = frequencyTier(answers.new_environments);
+  const enrichment = frequencyTier(answers.enrichment);
+
+  if (environments === 'high' || enrichment === 'high') {
+    return `${pet.name} may continue to grow in confidence and enjoy new experiences with you.`;
+  }
+
+  if (environments === 'mid' || enrichment === 'mid') {
+    return `${pet.name} may start exploring more of the world at their own pace, with you by their side.`;
+  }
+
+  return `${pet.name} may feel more at ease as familiar places and gentle routines become part of their story.`;
+}
+
+function buildTwoYearsLine(pet: Pet, answers: LifestyleAnswersInput): string {
+  const play = frequencyTier(answers.play_frequency);
+  const social = frequencyTier(answers.socialization);
+  const activity = activityPhrase(answers.favorite_activities);
+
+  if (play === 'high' || social === 'high') {
+    return activity
+      ? `Your bond may become even deeper as you explore more adventures together—especially around ${activity}.`
+      : 'Your bond may become even deeper as you explore more adventures together.';
+  }
+
+  if (play === 'mid' || social === 'mid') {
+    return `The trust you share with ${pet.name} may grow into a steady rhythm of meaningful moments.`;
+  }
+
+  return `The quiet care you give ${pet.name} today may blossom into a deeply rooted companionship.`;
+}
+
+function buildFiveYearsLine(answers: LifestyleAnswersInput): string {
+  const activity = activityPhrase(answers.favorite_activities);
+
+  if (activity) {
+    return `These moments you're building today—including ${activity}—may become some of your most cherished memories.`;
+  }
+
+  return "These moments you're building today may become some of your most cherished memories.";
 }
 
 function delay(ms: number): Promise<void> {
@@ -41,51 +116,29 @@ class MockAIService implements AIService {
   ): Promise<FutureSnapshotContent> {
     await delay(800);
 
-    const activityLine = buildActivityLine(pet, answers);
-    const envLine = pickByFrequency(
-      answers.new_environments,
-      'new places and scents keep curiosity alive',
-      'familiar spots with occasional new discoveries',
-      'a calm home base with gentle novelty',
-    );
-    const enrichLine = pickByFrequency(
-      answers.enrichment,
-      'puzzles, training, and enrichment are part of the rhythm',
-      'enrichment pops up in small, meaningful bursts',
-      'simple enrichment moments create steady joy',
-    );
-    const socialLine = pickByFrequency(
-      answers.socialization,
-      'social time adds sparkle to the week',
-      'select social moments feel special',
-      'one-on-one time stays at the center',
-    );
-
     return {
-      today: `${pet.name}'s story today is full of warmth. ${activityLine} With ${envLine}, ${enrichLine}, and ${socialLine}, this season feels like a living scrapbook in motion.`,
-      six_months: `Six months from now, ${pet.name} may have a richer collection of favorite spots, silly habits, and little rituals. New photos and notes could capture how ${answers.favorite_activities.toLowerCase()} evolved into signature moments.`,
-      two_years: `In two years, ${pet.name}'s lifestyle snapshot might show deeper routines: trusted walking routes, go-to enrichment games, and memories tied to seasons. The story becomes less about perfect days and more about meaningful patterns.`,
-      five_years: `Five years from now, ${pet.name}'s memory timeline could read like a love letter—milestones, everyday joys, and the small adventures that made this chapter unforgettable. Neo helps preserve that lifestyle story, not predict health outcomes.`,
+      today: buildTodayLine(pet, answers),
+      six_months: buildSixMonthsLine(pet, answers),
+      two_years: buildTwoYearsLine(pet, answers),
+      five_years: buildFiveYearsLine(answers),
     };
   }
 
   async generateMissingMoments(pet: Pet): Promise<MissingMomentsContent> {
     await delay(600);
 
-    const favoriteLabel = pet.breed ? `${pet.breed} adventures` : 'everyday adventures';
-
     return {
       moments_being_created: [
-        `Daily routines with ${pet.name}`,
-        `Favorite activities: ${favoriteLabel}`,
-        'Photos and notes you already capture',
-        'Comfortable home rituals',
+        `Daily companionship with ${pet.name}`,
+        'Familiar routines',
+        'Play time at home',
       ],
       moments_potentially_missing: [
-        'A photo from a new angle or location',
-        'A note about a small personality change',
-        'A new enrichment activity to try together',
-        'A memory from an ordinary Tuesday',
+        'New environments',
+        'Puzzle enrichment',
+        'Social experiences',
+        'Training games',
+        'Photo memories',
       ],
       suggestions: [...WEEKLY_SUGGESTIONS],
     };

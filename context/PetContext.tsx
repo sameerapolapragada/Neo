@@ -2,12 +2,14 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 
 import { database } from '@/lib/database';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import type { FutureSnapshot, Memory, MissingMoments, Pet } from '@/types';
+import type { FutureSnapshot, Memory, MissingMoments, Pet, WellnessCheckIn, WeightEntry } from '@/types';
 
 interface PetContextValue {
   pet: Pet | null;
   latestSnapshot: FutureSnapshot | null;
   latestMoments: MissingMoments | null;
+  wellnessCheckIns: WellnessCheckIn[];
+  weightEntries: WeightEntry[];
   memories: Memory[];
   loading: boolean;
   remoteSyncPending: boolean;
@@ -22,6 +24,8 @@ export function PetProvider({ children }: { children: React.ReactNode }) {
   const [pet, setPet] = useState<Pet | null>(null);
   const [latestSnapshot, setLatestSnapshot] = useState<FutureSnapshot | null>(null);
   const [latestMoments, setLatestMoments] = useState<MissingMoments | null>(null);
+  const [wellnessCheckIns, setWellnessCheckIns] = useState<WellnessCheckIn[]>([]);
+  const [weightEntries, setWeightEntries] = useState<WeightEntry[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(true);
   const [remoteSyncPending, setRemoteSyncPending] = useState(!isSupabaseConfigured);
@@ -33,18 +37,24 @@ export function PetProvider({ children }: { children: React.ReactNode }) {
       setPet(activePet);
 
       if (activePet) {
-        const [snapshot, moments, petMemories] = await Promise.all([
+        const [snapshot, moments, petMemories, checkIns, entries] = await Promise.all([
           database.getLatestFutureSnapshot(activePet.id),
           database.getLatestMissingMoments(activePet.id),
           database.getMemories(activePet.id),
+          database.getWellnessCheckIns(activePet.id),
+          database.getWeightEntries(activePet.id),
         ]);
         setLatestSnapshot(snapshot);
         setLatestMoments(moments);
         setMemories(petMemories);
+        setWellnessCheckIns(checkIns);
+        setWeightEntries(entries);
       } else {
         setLatestSnapshot(null);
         setLatestMoments(null);
         setMemories([]);
+        setWellnessCheckIns([]);
+        setWeightEntries([]);
       }
     } finally {
       setLoading(false);
@@ -65,6 +75,8 @@ export function PetProvider({ children }: { children: React.ReactNode }) {
         pet,
         latestSnapshot,
         latestMoments,
+        wellnessCheckIns,
+        weightEntries,
         memories,
         loading,
         remoteSyncPending,

@@ -11,7 +11,7 @@ import { Colors, Typography } from '@/constants/theme';
 interface PrimaryButtonProps extends PressableProps {
   title: string;
   loading?: boolean;
-  variant?: 'primary' | 'secondary' | 'outline';
+  variant?: 'primary' | 'secondary' | 'outline' | 'neutral';
 }
 
 export function PrimaryButton({
@@ -33,18 +33,24 @@ export function PrimaryButton({
         variant === 'primary' && styles.primary,
         variant === 'secondary' && styles.secondary,
         variant === 'outline' && styles.outline,
+        variant === 'neutral' && styles.neutral,
         isDisabled && styles.disabled,
         pressed && !isDisabled && styles.pressed,
-        typeof style === 'function' ? style({ pressed }) : style,
+        typeof style === 'function' ? style({ pressed, hovered: false }) : style,
       ]}
       {...props}>
       {loading ? (
-        <ActivityIndicator color={variant === 'outline' ? Colors.primary : '#FFFFFF'} />
+        <ActivityIndicator
+          color={
+            variant === 'outline' || variant === 'neutral' ? Colors.text : '#FFFFFF'
+          }
+        />
       ) : (
         <Text
           style={[
             styles.label,
             variant === 'outline' && styles.outlineLabel,
+            variant === 'neutral' && styles.neutralLabel,
             variant === 'secondary' && styles.secondaryLabel,
           ]}>
           {title}
@@ -81,7 +87,7 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   label: {
-    ...Typography.subtitle,
+    ...Typography.button,
     color: '#FFFFFF',
     fontSize: 16,
   },
@@ -90,5 +96,15 @@ const styles = StyleSheet.create({
   },
   outlineLabel: {
     color: Colors.primary,
+  },
+  neutral: {
+    backgroundColor: Colors.card,
+    borderWidth: 1.5,
+    borderColor: Colors.text,
+  },
+  neutralLabel: {
+    ...Typography.button,
+    color: Colors.text,
+    fontSize: 16,
   },
 });

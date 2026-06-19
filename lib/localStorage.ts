@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { v4 as uuidv4 } from 'uuid';
+
+import { generateId } from '@/lib/id';
 
 import type {
   FutureSnapshot,
@@ -8,6 +9,9 @@ import type {
   Memory,
   MissingMoments,
   Pet,
+  WellnessCheckIn,
+  WellnessRatings,
+  WeightEntry,
 } from '@/types';
 
 const KEYS = {
@@ -16,6 +20,8 @@ const KEYS = {
   futureSnapshots: '@neo/future_snapshots',
   missingMoments: '@neo/missing_moments',
   memories: '@neo/memories',
+  wellnessCheckIns: '@neo/wellness_check_ins',
+  weightEntries: '@neo/weight_entries',
   activePetId: '@neo/active_pet_id',
   onboardingComplete: '@neo/onboarding_complete',
 } as const;
@@ -69,13 +75,17 @@ export const localStorage = {
     const pets = await readJson<Pet[]>(KEYS.pets, []);
     const now = new Date().toISOString();
     const saved: Pet = {
-      id: pet.id ?? uuidv4(),
+      id: pet.id ?? generateId(),
       name: pet.name,
       species: pet.species,
       breed: pet.breed,
       age: pet.age,
       weight: pet.weight,
       photo_uri: pet.photo_uri,
+      birthday: pet.birthday,
+      gender: pet.gender,
+      adoption_date: pet.adoption_date,
+      microchip_id: pet.microchip_id,
       created_at: pet.id
         ? (pets.find((p) => p.id === pet.id)?.created_at ?? now)
         : now,
@@ -99,7 +109,7 @@ export const localStorage = {
   ): Promise<LifestyleAnswers> {
     const all = await readJson<LifestyleAnswers[]>(KEYS.lifestyleAnswers, []);
     const saved: LifestyleAnswers = {
-      id: uuidv4(),
+      id: generateId(),
       pet_id: petId,
       ...answers,
       created_at: new Date().toISOString(),
@@ -127,7 +137,7 @@ export const localStorage = {
   ): Promise<FutureSnapshot> {
     const all = await readJson<FutureSnapshot[]>(KEYS.futureSnapshots, []);
     const saved: FutureSnapshot = {
-      id: uuidv4(),
+      id: generateId(),
       pet_id: petId,
       lifestyle_answers_id: lifestyleAnswersId,
       ...content,
@@ -165,7 +175,7 @@ export const localStorage = {
   ): Promise<MissingMoments> {
     const all = await readJson<MissingMoments[]>(KEYS.missingMoments, []);
     const saved: MissingMoments = {
-      id: uuidv4(),
+      id: generateId(),
       pet_id: petId,
       ...content,
       created_at: new Date().toISOString(),
@@ -193,14 +203,15 @@ export const localStorage = {
 
   async saveMemory(
     petId: string,
-    memory: Omit<Memory, 'id' | 'pet_id' | 'created_at'>,
+    memory: Omit<Memory, 'id' | 'pet_id' | 'created_at'> & { created_at?: string },
   ): Promise<Memory> {
     const all = await readJson<Memory[]>(KEYS.memories, []);
+    const { created_at, ...fields } = memory;
     const saved: Memory = {
-      id: uuidv4(),
+      id: generateId(),
       pet_id: petId,
-      ...memory,
-      created_at: new Date().toISOString(),
+      ...fields,
+      created_at: created_at ?? new Date().toISOString(),
     };
     all.unshift(saved);
     await writeJson(KEYS.memories, all);
@@ -221,5 +232,136 @@ export const localStorage = {
   async getMemories(petId: string): Promise<Memory[]> {
     const all = await readJson<Memory[]>(KEYS.memories, []);
     return all.filter((memory) => memory.pet_id === petId);
+  },
+
+  async getMemory(petId: string, memoryId: string): Promise<Memory | null> {
+    const all = await readJson<Memory[]>(KEYS.memories, []);
+    return all.find((memory) => memory.pet_id === petId && memory.id === memoryId) ?? null;
+  },
+
+  async updateMemory(
+    petId: string,
+    memoryId: string,
+    updates: Partial<Omit<Memory, 'id' | 'pet_id'>>,
+  ): Promise<Memory> {
+    const all = await readJson<Memory[]>(KEYS.memories, []);
+    const index = all.findIndex(
+      (memory) => memory.pet_id === petId && memory.id === memoryId,
+    );
+
+    if (index < 0) {
+      throw new Error('Memory not found');
+    }
+
+    const updated: Memory = {
+      ...all[index],
+      ...updates,
+    };
+    all[index] = updated;
+    await writeJson(KEYS.memories, all);
+    return updated;
+  },
+
+  async deleteMemory(petId: string, memoryId: string): Promise<void> {
+    const all = await readJson<Memory[]>(KEYS.memories, []);
+    const filtered = all.filter(
+      (memory) => !(memory.pet_id === petId && memory.id === memoryId),
+    );
+    await writeJson(KEYS.memories, filtered);
+  },
+
+  async getWellnessCheckIns(petId: string): Promise<WellnessCheckIn[]> {
+    const all = await readJson<WellnessCheckIn[]>(KEYS.wellnessCheckIns, []);
+    return all
+      .filter((checkIn) => checkIn.pet_id === petId)
+      .sort(
+        (a, b) =>
+          new Date(b.week_start).getTime() - new Date(a.week_start).getTime(),
+      );
+  },
+
+  async getWellnessCheckInForWeek(
+    petId: string,
+    weekStart: string,
+  ): Promise<WellnessCheckIn | null> {
+    const all = await readJson<WellnessCheckIn[]>(KEYS.wellnessCheckIns, []);
+    return (
+      all.find(
+        (checkIn) =>
+          checkIn.pet_id === petId && checkIn.week_start.slice(0, 10) === weekStart.slice(0, 10),
+      ) ?? null
+    );
+  },
+
+  async saveWellnessCheckIn(
+    petId: string,
+    weekStart: string,
+    ratings: WellnessRatings,
+  ): Promise<WellnessCheckIn> {
+    const all = await readJson<WellnessCheckIn[]>(KEYS.wellnessCheckIns, []);
+    const normalizedWeek = weekStart.slice(0, 10);
+    const now = new Date().toISOString();
+    const existingIndex = all.findIndex(
+      (checkIn) =>
+        checkIn.pet_id === petId && checkIn.week_start.slice(0, 10) === normalizedWeek,
+    );
+
+    if (existingIndex >= 0) {
+      const updated: WellnessCheckIn = {
+        ...all[existingIndex],
+        ratings,
+        updated_at: now,
+      };
+      all[existingIndex] = updated;
+      await writeJson(KEYS.wellnessCheckIns, all);
+      return updated;
+    }
+
+    const saved: WellnessCheckIn = {
+      id: generateId(),
+      pet_id: petId,
+      week_start: normalizedWeek,
+      ratings,
+      created_at: now,
+      updated_at: now,
+    };
+    all.unshift(saved);
+    await writeJson(KEYS.wellnessCheckIns, all);
+    return saved;
+  },
+
+  async getWeightEntries(petId: string): Promise<WeightEntry[]> {
+    const all = await readJson<WeightEntry[]>(KEYS.weightEntries, []);
+    return all
+      .filter((entry) => entry.pet_id === petId)
+      .sort(
+        (a, b) =>
+          new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime(),
+      );
+  },
+
+  async saveWeightEntry(
+    petId: string,
+    entry: Omit<WeightEntry, 'id' | 'pet_id' | 'created_at'>,
+  ): Promise<WeightEntry> {
+    const all = await readJson<WeightEntry[]>(KEYS.weightEntries, []);
+    const saved: WeightEntry = {
+      id: generateId(),
+      pet_id: petId,
+      weight: entry.weight,
+      recorded_at: entry.recorded_at,
+      created_at: new Date().toISOString(),
+    };
+    all.unshift(saved);
+    await writeJson(KEYS.weightEntries, all);
+    return saved;
+  },
+
+  async deleteWeightEntry(petId: string, entryId: string): Promise<void> {
+    const all = await readJson<WeightEntry[]>(KEYS.weightEntries, []);
+    const filtered = all.filter(
+      (entry) => !(entry.pet_id === petId && entry.id === entryId),
+    );
+    await writeJson(KEYS.weightEntries, filtered);
   },
 };

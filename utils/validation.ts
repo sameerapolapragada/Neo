@@ -1,4 +1,5 @@
 import type { MemoryDraft, PetProfileDraft, SnapshotDraft } from '@/types';
+import { CAPTION_MAX_LENGTH, NOTES_MAX_LENGTH } from '@/constants/memoryForm';
 
 export type ValidationErrors<T extends object> = Partial<Record<keyof T, string>>;
 
@@ -19,12 +20,16 @@ export function validatePetProfile(form: PetProfileDraft): ValidationErrors<PetP
     errors.breed = 'Breed is required';
   }
 
-  if (!form.age.trim()) {
-    errors.age = 'Age is required';
+  if (!form.birthday) {
+    errors.birthday = 'Birthday is required';
   }
 
-  if (form.weight.trim() && !/^[\d.]+\s*\w*$/.test(form.weight.trim())) {
-    errors.weight = 'Use a format like "25 lbs" or "12 kg"';
+  if (!form.adoption_date) {
+    errors.adoption_date = 'Adoption date is required';
+  }
+
+  if (form.weightValue.trim() && !/^\d+(\.\d+)?$/.test(form.weightValue.trim())) {
+    errors.weightValue = 'Enter a valid weight';
   }
 
   return errors;
@@ -46,15 +51,22 @@ export function validateMemoryForm(form: MemoryDraft): ValidationErrors<MemoryDr
   const errors: ValidationErrors<MemoryDraft> = {};
 
   if (!form.title.trim()) {
-    errors.title = 'Memory title is required';
+    errors.title =
+      form.entry_type === 'milestone' ? 'Milestone title is required' : 'Memory title is required';
   } else if (form.title.trim().length < 2) {
     errors.title = 'Title must be at least 2 characters';
   }
 
   if (!form.description.trim()) {
-    errors.description = 'Description is required';
+    errors.description =
+      form.entry_type === 'milestone' ? 'Notes are required' : 'Caption is required';
   } else if (form.description.trim().length < 5) {
     errors.description = 'Add a little more about this moment';
+  } else {
+    const maxLength = form.entry_type === 'milestone' ? NOTES_MAX_LENGTH : CAPTION_MAX_LENGTH;
+    if (form.description.trim().length > maxLength) {
+      errors.description = `Must be ${maxLength} characters or less`;
+    }
   }
 
   return errors;

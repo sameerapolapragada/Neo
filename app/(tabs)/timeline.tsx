@@ -1,43 +1,46 @@
-import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
 
-import { AppHeader } from '@/components/AppHeader';
 import { EmptyState } from '@/components/EmptyState';
-import { FormField } from '@/components/FormField';
-import { ImageUploadPreview } from '@/components/ImageUploadPreview';
+import { LoadingState } from '@/components/LoadingState';
 import { OfflineBanner } from '@/components/OfflineBanner';
-import { PrimaryButton } from '@/components/PrimaryButton';
-import { Card } from '@/components/SafeScreen';
-import { ScreenLayout } from '@/components/ScreenLayout';
-import { TimelineItem } from '@/components/TimelineItem';
-import { Colors, Spacing, Typography } from '@/constants/theme';
+import { SafeScreen } from '@/components/SafeScreen';
+import { TimelineMonthGroup } from '@/components/TimelineMonthGroup';
+import { TimelineScreenHeader } from '@/components/TimelineScreenHeader';
+import { Spacing } from '@/constants/theme';
 import { usePet } from '@/context/PetContext';
+import { useResponsive } from '@/hooks/useResponsive';
 import { database } from '@/lib/database';
-import { drafts } from '@/services/drafts';
-import {
-  showPermissionAlert,
-  showRemoteFallbackNotice,
-  showSaveError,
-} from '@/utils/feedback';
-import { hasErrors, validateMemoryForm, type ValidationErrors } from '@/utils/validation';
-import type { MemoryDraft, TimelineEntry } from '@/types';
+import { formatTimelineMonth } from '@/utils/timelineDate';
+import type { Memory, TimelineEntry } from '@/types';
 
-const emptyDraft: MemoryDraft = {
-  title: '',
-  description: '',
-};
+function groupTimelineEntries(entries: TimelineEntry[]) {
+  const groups: { key: string; label: string; entries: TimelineEntry[] }[] = [];
+  const indexByKey = new Map<string, number>();
+
+  for (const entry of entries) {
+    const key = entry.data.created_at.slice(0, 7);
+    const label = formatTimelineMonth(entry.data.created_at);
+
+    if (!indexByKey.has(key)) {
+      indexByKey.set(key, groups.length);
+      groups.push({ key, label, entries: [] });
+    }
+
+    groups[indexByKey.get(key)!].entries.push(entry);
+  }
+
+  return groups;
+}
 
 export default function TimelineScreen() {
-  const { pet, memories, loading, refresh, markRemoteSyncPending, remoteSyncPending } = usePet();
+  const { pet, memories, loading, remoteSyncPending } = usePet();
+  const { horizontalPadding } = useResponsive();
   const [snapshots, setSnapshots] = useState<
     Awaited<ReturnType<typeof database.getFutureSnapshots>>
   >([]);
   const [snapshotsLoading, setSnapshotsLoading] = useState(false);
-  const [form, setForm] = useState<MemoryDraft>(emptyDraft);
-  const [errors, setErrors] = useState<ValidationErrors<MemoryDraft>>({});
-  const [saving, setSaving] = useState(false);
-  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     if (pet) {
@@ -48,21 +51,6 @@ export default function TimelineScreen() {
         .finally(() => setSnapshotsLoading(false));
     }
   }, [pet, memories]);
-
-  useEffect(() => {
-    drafts.getMemory().then((draft) => {
-      if (draft) {
-        setForm(draft);
-        setShowForm(true);
-      }
-    });
-  }, []);
-
-  useEffect(() => {
-    if (showForm) {
-      drafts.saveMemory(form);
-    }
-  }, [form, showForm]);
 
   const entries = useMemo<TimelineEntry[]>(() => {
     const combined: TimelineEntry[] = [
@@ -76,178 +64,68 @@ export default function TimelineScreen() {
     );
   }, [memories, snapshots]);
 
-  function updateField<K extends keyof MemoryDraft>(key: K, value: MemoryDraft[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
-    if (errors[key]) {
-      setErrors((current) => {
-        const next = { ...current };
-        delete next[key];
-        return next;
-      });
-    }
-  }
+  const monthGroups = useMemo(() => groupTimelineEntries(entries), [entries]);
 
-  async function pickPhoto() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      showPermissionAlert('photos');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      updateField('photo_uri', result.assets[0].uri);
-    }
-  }
-
-  async function handleSaveMemory() {
-    if (!pet) return;
-
-    const nextErrors = validateMemoryForm(form);
-    setErrors(nextErrors);
-    if (hasErrors(nextErrors)) return;
-
-    setSaving(true);
-    try {
-      const { remoteFailed } = await database.saveMemory(pet.id, {
-        title: form.title.trim(),
-        description: form.description.trim(),
-        photo_uri: form.photo_uri,
-      });
-
-      markRemoteSyncPending(remoteFailed);
-      showRemoteFallbackNotice(remoteFailed);
-      setForm(emptyDraft);
-      setErrors({});
-      setShowForm(false);
-      await drafts.clearMemory();
-      await refresh();
-      const updatedSnapshots = await database.getFutureSnapshots(pet.id);
-      setSnapshots(updatedSnapshots);
-    } catch (error) {
-      showSaveError('Memory save', error);
-    } finally {
-      setSaving(false);
-    }
+  function handleMemoryPress(memory: Memory) {
+    router.push(`/memory/${memory.id}`);
   }
 
   if (!loading && !pet) {
     return (
-      <ScreenLayout scrollable={false}>
+      <SafeScreen>
         <EmptyState
           title="No timeline yet"
           message="Create a pet profile to start your memory timeline."
         />
-      </ScreenLayout>
+      </SafeScreen>
+    );
+  }
+
+  if (loading || snapshotsLoading) {
+    return (
+      <SafeScreen>
+        <LoadingState message="Loading timeline..." />
+      </SafeScreen>
     );
   }
 
   return (
-    <ScreenLayout
-      loading={loading}
-      loadingMessage="Loading timeline..."
-      keyboardAvoiding
-      scrollViewProps={{ keyboardDismissMode: 'interactive' }}>
-      <OfflineBanner visible={remoteSyncPending} />
+    <SafeScreen edges={['top']}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingHorizontal: horizontalPadding }]}
+        showsVerticalScrollIndicator={false}>
+        <TimelineScreenHeader />
+        <OfflineBanner visible={remoteSyncPending} />
 
-      <AppHeader
-        title="Memory Timeline"
-        subtitle="Chronological memories and future snapshots in one place."
-      />
-
-      {!showForm ? (
-        <PrimaryButton title="Add Memory" onPress={() => setShowForm(true)} />
-      ) : (
-        <Card style={styles.formCard}>
-          <Text style={styles.formTitle}>New Memory</Text>
-          <FormField
-            label="Memory title"
-            required
-            value={form.title}
-            onChangeText={(title) => updateField('title', title)}
-            placeholder="First beach day"
-            error={errors.title}
-          />
-          <FormField
-            label="Memory description"
-            required
-            value={form.description}
-            onChangeText={(description) => updateField('description', description)}
-            placeholder="What made this moment special?"
-            error={errors.description}
-            multiline
-            style={styles.textArea}
-          />
-          <ImageUploadPreview
-            uri={form.photo_uri}
-            onPick={pickPhoto}
-            onRemove={() => updateField('photo_uri', undefined)}
-            aspect="wide"
-            hint="Add an optional memory photo"
-            pickLabel="Add Photo"
-            changeLabel="Change Photo"
-          />
-          <View style={styles.formActions}>
-            <PrimaryButton title="Save Memory" loading={saving} onPress={handleSaveMemory} />
-            <PrimaryButton
-              title="Cancel"
-              variant="outline"
-              onPress={() => {
-                setShowForm(false);
-                setForm(emptyDraft);
-                setErrors({});
-                drafts.clearMemory();
-              }}
-            />
-          </View>
-        </Card>
-      )}
-
-      <View style={styles.list}>
-        {snapshotsLoading ? (
-          <EmptyState emoji="⏳" title="Loading entries" message="Fetching your timeline..." />
-        ) : entries.length === 0 ? (
+        {entries.length === 0 ? (
           <EmptyState
             emoji="📖"
             title="Your timeline is empty"
             message="Add a memory or generate a future snapshot to begin."
           />
         ) : (
-          entries.map((entry) => (
-            <TimelineItem key={`${entry.type}-${entry.data.id}`} entry={entry} />
-          ))
+          <View style={styles.list}>
+            {monthGroups.map((group) => (
+              <TimelineMonthGroup
+                key={group.key}
+                label={group.label}
+                entries={group.entries}
+                onMemoryPress={handleMemoryPress}
+              />
+            ))}
+          </View>
         )}
-      </View>
-    </ScreenLayout>
+      </ScrollView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  formCard: {
-    marginTop: Spacing.md,
-    marginBottom: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  formTitle: {
-    ...Typography.subtitle,
-    color: Colors.text,
-    marginBottom: Spacing.sm,
-  },
-  textArea: {
-    minHeight: 96,
-    textAlignVertical: 'top',
-  },
-  formActions: {
-    gap: Spacing.sm,
-    marginTop: Spacing.sm,
+  content: {
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xxl,
   },
   list: {
-    marginTop: Spacing.lg,
+    marginTop: Spacing.md,
   },
 });

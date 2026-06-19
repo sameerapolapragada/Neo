@@ -1,93 +1,96 @@
 import { router } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 
-import { AppHeader } from '@/components/AppHeader';
 import { EmptyState } from '@/components/EmptyState';
+import { HomeLandingScreen } from '@/components/HomeLandingScreen';
+import { LifeProfilePanel } from '@/components/LifeProfilePanel';
+import { LifeTimelineFeed } from '@/components/LifeTimelineFeed';
+import { LoadingState } from '@/components/LoadingState';
 import { OfflineBanner } from '@/components/OfflineBanner';
-import { PetCard } from '@/components/PetCard';
-import { PrimaryButton } from '@/components/PrimaryButton';
-import { Card } from '@/components/SafeScreen';
-import { ScreenLayout } from '@/components/ScreenLayout';
-import { SnapshotCard } from '@/components/SnapshotCard';
-import { Colors, Spacing, Typography } from '@/constants/theme';
+import { SafeScreen } from '@/components/SafeScreen';
+import { AuthColors } from '@/constants/authTheme';
+import { Spacing } from '@/constants/theme';
 import { usePet } from '@/context/PetContext';
+import { useResponsive } from '@/hooks/useResponsive';
+import type { Memory, TimelineEntry } from '@/types';
 
 export default function HomeScreen() {
-  const { pet, latestSnapshot, loading, remoteSyncPending } = usePet();
+  const { pet, memories, weightEntries, loading, remoteSyncPending } = usePet();
+  const { horizontalPadding } = useResponsive();
 
-  if (!loading && !pet) {
+  const timelineEntries = useMemo<TimelineEntry[]>(
+    () =>
+      memories
+        .map((memory) => ({ type: 'memory' as const, data: memory }))
+        .sort(
+          (a, b) =>
+            new Date(b.data.created_at).getTime() - new Date(a.data.created_at).getTime(),
+        ),
+    [memories],
+  );
+
+  function handleMemoryPress(memory: Memory) {
+    router.push(`/memory/${memory.id}`);
+  }
+
+  const isEmptyTimeline = timelineEntries.length === 0;
+
+  if (loading) {
     return (
-      <ScreenLayout scrollable={false}>
+      <SafeScreen style={styles.screen}>
+        <LoadingState message="Loading your pet's story..." />
+      </SafeScreen>
+    );
+  }
+
+  if (!pet) {
+    return (
+      <SafeScreen style={styles.screen}>
         <EmptyState
           title="No pet profile yet"
           message="Create a profile to start building your pet's memory story."
           actionLabel="Create Pet Profile"
           onAction={() => router.push('/pet-profile')}
         />
-      </ScreenLayout>
+      </SafeScreen>
+    );
+  }
+
+  if (isEmptyTimeline) {
+    return (
+      <SafeScreen style={styles.landingScreen} edges={[]}>
+        <OfflineBanner visible={remoteSyncPending} />
+        <HomeLandingScreen
+          variant="home"
+          onPrimaryAction={() => router.push('/(tabs)/add')}
+        />
+      </SafeScreen>
     );
   }
 
   return (
-    <ScreenLayout loading={loading} loadingMessage="Loading your pet's story...">
-      <OfflineBanner visible={remoteSyncPending} />
-
-      {pet ? (
-        <>
-          <AppHeader title={`Hi, ${pet.name}!`} subtitle="Every pet has a story." />
-
-          <PetCard pet={pet} />
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Latest Future Snapshot</Text>
-            {latestSnapshot ? (
-              <SnapshotCard label="Today" content={latestSnapshot.today} />
-            ) : (
-              <Card>
-                <EmptyState
-                  emoji="✨"
-                  title="No snapshot yet"
-                  message="Answer a few lifestyle questions to generate your first future snapshot."
-                  actionLabel="Generate Snapshot"
-                  onAction={() => router.push('/(tabs)/snapshot')}
-                />
-              </Card>
-            )}
-          </View>
-
-          <View style={styles.actions}>
-            <PrimaryButton
-              title="Generate Future Snapshot"
-              onPress={() => router.push('/(tabs)/snapshot')}
-            />
-            <PrimaryButton
-              title="Discover Missing Moments"
-              variant="secondary"
-              onPress={() => router.push('/(tabs)/moments')}
-            />
-            <PrimaryButton
-              title="Add Memory"
-              variant="outline"
-              onPress={() => router.push('/(tabs)/timeline')}
-            />
-          </View>
-        </>
-      ) : null}
-    </ScreenLayout>
+    <SafeScreen style={styles.screen} edges={['top']}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingHorizontal: horizontalPadding }]}
+        showsVerticalScrollIndicator={false}>
+        <OfflineBanner visible={remoteSyncPending} />
+        <LifeProfilePanel pet={pet} weightEntries={weightEntries} />
+        <LifeTimelineFeed entries={timelineEntries} onMemoryPress={handleMemoryPress} />
+      </ScrollView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  section: {
-    marginTop: Spacing.lg,
+  screen: {
+    backgroundColor: AuthColors.emptyTimelineBackground,
   },
-  sectionTitle: {
-    ...Typography.subtitle,
-    color: Colors.text,
-    marginBottom: Spacing.md,
+  landingScreen: {
+    backgroundColor: AuthColors.emptyTimelineBackground,
   },
-  actions: {
-    marginTop: Spacing.lg,
-    gap: Spacing.sm,
+  content: {
+    paddingTop: Spacing.md,
+    paddingBottom: Platform.OS === 'ios' ? 130 : 110,
   },
 });

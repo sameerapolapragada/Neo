@@ -1,53 +1,113 @@
+import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Card } from '@/components/SafeScreen';
-import { Colors, Typography } from '@/constants/theme';
+import { AuthColors } from '@/constants/authTheme';
+import { Typography } from '@/constants/theme';
+
+export type MomentCardVariant = 'created' | 'missing' | 'suggestions';
+
+const VARIANT_CONFIG = {
+  created: {
+    backgroundColor: AuthColors.accentSoft,
+    titleColor: AuthColors.accent,
+    markerColor: AuthColors.success,
+    illustration: '🐕',
+    marker: 'check' as const,
+  },
+  missing: {
+    backgroundColor: AuthColors.primarySoft,
+    titleColor: AuthColors.primaryDark,
+    markerColor: AuthColors.primary,
+    illustration: '💭',
+    marker: 'dot' as const,
+  },
+  suggestions: {
+    backgroundColor: AuthColors.accentSoft,
+    titleColor: AuthColors.accentDark,
+    markerColor: AuthColors.accent,
+    illustration: '📋',
+    marker: 'dot' as const,
+  },
+};
 
 interface MomentCardProps {
   title: string;
   items: string[];
-  accent?: 'green' | 'orange' | 'neutral';
+  variant: MomentCardVariant;
 }
 
-export function MomentCard({ title, items, accent = 'neutral' }: MomentCardProps) {
-  const accentColor =
-    accent === 'green' ? Colors.accent : accent === 'orange' ? Colors.primary : Colors.textSecondary;
+export function MomentCard({ title, items, variant }: MomentCardProps) {
+  const config = VARIANT_CONFIG[variant];
 
   return (
-    <Card style={styles.card}>
-      <Text style={[styles.title, { color: accentColor }]}>{title}</Text>
-      {items.map((item) => (
-        <View key={item} style={styles.row}>
-          <Text style={styles.bullet}>•</Text>
-          <Text style={styles.item}>{item}</Text>
-        </View>
-      ))}
-    </Card>
+    <View style={[styles.card, { backgroundColor: config.backgroundColor }]}>
+      <View style={styles.content}>
+        <Text style={[styles.title, { color: config.titleColor }]}>{title}</Text>
+
+        {items.map((item) => (
+          <View key={item} style={styles.row}>
+            {config.marker === 'check' ? (
+              <Ionicons name="checkmark-circle" size={18} color={config.markerColor} />
+            ) : (
+              <View style={[styles.dot, { backgroundColor: config.markerColor }]} />
+            )}
+            <Text style={styles.item}>{item}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.artWrap}>
+        <Text style={styles.artEmoji}>{config.illustration}</Text>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    marginBottom: 12,
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 16,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    minHeight: 148,
+  },
+  content: {
+    flex: 1,
+    paddingRight: 72,
   },
   title: {
     ...Typography.subtitle,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 6,
-    gap: 8,
+    marginBottom: 8,
+    gap: 10,
   },
-  bullet: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    lineHeight: 22,
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 7,
   },
   item: {
     ...Typography.body,
-    color: Colors.text,
+    color: AuthColors.text,
     flex: 1,
+    lineHeight: 22,
+  },
+  artWrap: {
+    position: 'absolute',
+    right: 10,
+    bottom: 8,
+    width: 72,
+    height: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  artEmoji: {
+    fontSize: 44,
   },
 });

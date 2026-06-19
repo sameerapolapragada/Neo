@@ -1,98 +1,142 @@
 import { router } from 'expo-router';
-import { StyleSheet, Text } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
-import { AppHeader } from '@/components/AppHeader';
 import { EmptyState } from '@/components/EmptyState';
+import { LoadingState } from '@/components/LoadingState';
 import { OfflineBanner } from '@/components/OfflineBanner';
-import { PetCard } from '@/components/PetCard';
-import { PrimaryButton } from '@/components/PrimaryButton';
-import { Card } from '@/components/SafeScreen';
-import { ScreenLayout } from '@/components/ScreenLayout';
-import { Colors, DISCLAIMER, Spacing, Typography } from '@/constants/theme';
+import { PetProfileDetailView } from '@/components/PetProfileDetailView';
+import { SafeScreen } from '@/components/SafeScreen';
+import { AuthColors, AuthTypography } from '@/constants/authTheme';
 import { usePet } from '@/context/PetContext';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { database } from '@/lib/database';
+import { auth } from '@/lib/auth';
+import { showRemoteFallbackNotice, showSaveError } from '@/utils/feedback';
+
+function confirmLogOut() {
+  Alert.alert('Log out', 'Are you sure you want to log out of your account?', [
+    { text: 'Cancel', style: 'cancel' },
+    {
+      text: 'Log Out',
+      style: 'destructive',
+      onPress: async () => {
+        await auth.signOut();
+        router.replace('/login');
+      },
+    },
+  ]);
+}
 
 export default function ProfileScreen() {
-  const { pet, loading, remoteSyncPending } = usePet();
+  const { pet, memories, weightEntries, wellnessCheckIns, loading, remoteSyncPending, refresh, markRemoteSyncPending, setPet } =
+    usePet();
 
-  if (!loading && !pet) {
+  async function handleVetSave(fields: { vet_name?: string; vet_clinic?: string }) {
+    if (!pet) return;
+
+    try {
+      const { pet: savedPet, remoteFailed } = await database.savePet({
+        id: pet.id,
+        name: pet.name,
+        species: pet.species,
+        breed: pet.breed,
+        age: pet.age,
+        weight: pet.weight,
+        photo_uri: pet.photo_uri,
+        birthday: pet.birthday,
+        gender: pet.gender,
+        adoption_date: pet.adoption_date,
+        microchip_id: pet.microchip_id,
+        vet_name: 'vet_name' in fields ? fields.vet_name : pet.vet_name,
+        vet_clinic: 'vet_clinic' in fields ? fields.vet_clinic : pet.vet_clinic,
+      });
+
+      setPet(savedPet);
+      markRemoteSyncPending(remoteFailed);
+      showRemoteFallbackNotice(remoteFailed);
+      await refresh();
+    } catch (error) {
+      showSaveError('Save veterinary info', error);
+    }
+  }
+
+  if (loading) {
     return (
-      <ScreenLayout scrollable={false}>
+      <SafeScreen style={styles.screen}>
+        <LoadingState message="Loading profile..." />
+      </SafeScreen>
+    );
+  }
+
+  if (!pet) {
+    return (
+      <SafeScreen style={styles.screen}>
         <EmptyState
           title="No profile yet"
           message="Create your pet profile to personalize Neo."
           actionLabel="Create Pet Profile"
           onAction={() => router.push('/pet-profile')}
         />
-      </ScreenLayout>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Log out"
+          onPress={confirmLogOut}
+          style={({ pressed }) => [styles.emptyLogOut, pressed && styles.pressed]}>
+          <Ionicons name="log-out-outline" size={20} color={AuthColors.error} />
+          <Text style={styles.logOutLabel}>Log Out</Text>
+        </Pressable>
+      </SafeScreen>
     );
   }
 
   return (
-    <ScreenLayout loading={loading} loadingMessage="Loading profile...">
+    <SafeScreen style={styles.screen} edges={[]}>
       <OfflineBanner visible={remoteSyncPending} />
 
-      {pet ? (
-        <>
-          <AppHeader title="Profile" subtitle="Your pet's details and app settings." />
-
-          <PetCard pet={pet} />
-
-          <PrimaryButton
-            title="Edit Pet Profile"
-            variant="outline"
-            onPress={() => router.push('/pet-profile')}
-            style={styles.button}
-          />
-
-          <Card style={styles.infoCard}>
-            <Text style={styles.infoTitle}>Storage</Text>
-            <Text style={styles.infoText}>
-              {isSupabaseConfigured
-                ? remoteSyncPending
-                  ? 'Cloud sync pending. Your latest changes are stored on this device.'
-                  : 'Connected to Supabase with local offline backup.'
-                : 'Using local storage on this device. Add Supabase keys to enable cloud sync.'}
-            </Text>
-          </Card>
-
-          <Card style={styles.disclaimerCard}>
-            <Text style={styles.disclaimerTitle}>Safety Disclaimer</Text>
-            <Text style={styles.disclaimerText}>{DISCLAIMER}</Text>
-          </Card>
-        </>
-      ) : null}
-    </ScreenLayout>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <PetProfileDetailView
+          pet={pet}
+          memories={memories}
+          weightEntries={weightEntries}
+          wellnessCheckIns={wellnessCheckIns}
+          onEdit={() => router.push('/pet-profile')}
+          onWeightPress={() => router.push('/(tabs)/weight-tracker')}
+          onVetSave={handleVetSave}
+          onLogOut={confirmLogOut}
+        />
+      </ScrollView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  button: {
-    marginTop: Spacing.lg,
+  screen: {
+    backgroundColor: AuthColors.emptyTimelineBackground,
   },
-  infoCard: {
-    marginTop: Spacing.lg,
+  content: {
+    flexGrow: 1,
+    paddingBottom: Platform.OS === 'ios' ? 110 : 90,
   },
-  infoTitle: {
-    ...Typography.label,
-    color: Colors.text,
-    marginBottom: 6,
+  emptyLogOut: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 24,
+    marginHorizontal: 24,
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: AuthColors.border,
+    backgroundColor: AuthColors.surface,
   },
-  infoText: {
-    ...Typography.body,
-    color: Colors.textSecondary,
+  logOutLabel: {
+    ...AuthTypography.label,
+    fontSize: 16,
+    color: AuthColors.error,
   },
-  disclaimerCard: {
-    marginTop: Spacing.md,
-    backgroundColor: Colors.disclaimerBg,
-  },
-  disclaimerTitle: {
-    ...Typography.label,
-    color: Colors.text,
-    marginBottom: 6,
-  },
-  disclaimerText: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
+  pressed: {
+    opacity: 0.85,
   },
 });

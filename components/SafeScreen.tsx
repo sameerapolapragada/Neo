@@ -1,6 +1,7 @@
 import { StyleSheet, View, ViewProps } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AuthColors } from '@/constants/authTheme';
 import { Colors } from '@/constants/theme';
 
 interface SafeScreenProps extends ViewProps {
@@ -39,7 +40,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: Colors.border,
-    shadowColor: '#3D2C2C',
+    shadowColor: AuthColors.text,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 8,

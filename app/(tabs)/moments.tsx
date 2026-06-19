@@ -1,110 +1,200 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, Platform, ScrollView, StyleSheet } from 'react-native';
 
-import { AppHeader } from '@/components/AppHeader';
+import { AuthPrimaryButton } from '@/components/AuthPrimaryButton';
 import { EmptyState } from '@/components/EmptyState';
-import { MomentCard } from '@/components/MomentCard';
+import { LoadingState } from '@/components/LoadingState';
 import { OfflineBanner } from '@/components/OfflineBanner';
-import { PrimaryButton } from '@/components/PrimaryButton';
-import { ScreenLayout } from '@/components/ScreenLayout';
-import { Spacing } from '@/constants/theme';
+import { SafeScreen } from '@/components/SafeScreen';
+import { WellnessCheckInHeader } from '@/components/WellnessCheckInHeader';
+import { WellnessHistoryTab } from '@/components/WellnessHistoryTab';
+import { WellnessMetricCard } from '@/components/WellnessMetricCard';
+import { WellnessPreviousCheckIns } from '@/components/WellnessPreviousCheckIns';
+import { WellnessTrendsHeader, type WellnessTrendRange } from '@/components/WellnessTrendsHeader';
+import { WellnessViewToggle } from '@/components/WellnessViewToggle';
+import { WELLNESS_METRICS, WELLNESS_METRIC_COUNT } from '@/constants/wellnessForm';
+import { AuthColors } from '@/constants/authTheme';
 import { usePet } from '@/context/PetContext';
+import { useResponsive } from '@/hooks/useResponsive';
 import { database } from '@/lib/database';
-import { generateMissingMoments } from '@/services/ai';
-import { showRemoteFallbackNotice, showSaveError } from '@/utils/feedback';
-import type { MissingMoments } from '@/types';
+import { showRemoteFallbackNotice } from '@/utils/feedback';
+import {
+  computeWellnessProgress,
+  computeWellnessStreak,
+  formatWeekRange,
+  toWeekStartIso,
+} from '@/utils/wellnessDate';
+import type { WellnessMetricId, WellnessRatings } from '@/types';
 
-export default function MomentsScreen() {
-  const { pet, latestMoments, loading, refresh, markRemoteSyncPending, remoteSyncPending } =
-    usePet();
-  const [result, setResult] = useState<MissingMoments | null>(latestMoments);
-  const [generating, setGenerating] = useState(false);
+type WellnessView = 'check-in' | 'history';
+
+export default function WellnessScreen() {
+  const {
+    pet,
+    wellnessCheckIns,
+    loading,
+    refresh,
+    markRemoteSyncPending,
+    remoteSyncPending,
+  } = usePet();
+  const { horizontalPadding } = useResponsive();
+  const [view, setView] = useState<WellnessView>('check-in');
+  const [trendRange, setTrendRange] = useState<WellnessTrendRange>('weekly');
+  const [ratings, setRatings] = useState<WellnessRatings>({});
+  const [saving, setSaving] = useState(false);
+
+  const weekStart = useMemo(() => toWeekStartIso(), []);
+
+  const currentCheckIn = useMemo(
+    () =>
+      wellnessCheckIns.find(
+        (checkIn) => checkIn.week_start.slice(0, 10) === weekStart,
+      ) ?? null,
+    [wellnessCheckIns, weekStart],
+  );
 
   useEffect(() => {
-    setResult(latestMoments);
-  }, [latestMoments]);
+    setRatings(currentCheckIn?.ratings ?? {});
+  }, [currentCheckIn]);
 
-  async function handleGenerate() {
-    if (!pet) return;
+  const progress = useMemo(() => computeWellnessProgress(ratings), [ratings]);
+  const streak = useMemo(
+    () => computeWellnessStreak(wellnessCheckIns, weekStart),
+    [wellnessCheckIns, weekStart],
+  );
+  const weekLabel = useMemo(() => formatWeekRange(weekStart), [weekStart]);
+  const canSave = progress.completed === WELLNESS_METRIC_COUNT;
 
-    setGenerating(true);
-    try {
-      const content = await generateMissingMoments(pet);
-      const { moments, remoteFailed } = await database.saveMissingMoments(pet.id, content);
-      markRemoteSyncPending(remoteFailed);
-      showRemoteFallbackNotice(remoteFailed);
-      setResult(moments);
-      await refresh();
-    } catch (error) {
-      showSaveError('Missing moments analysis', error);
-    } finally {
-      setGenerating(false);
-    }
+  const persistRatings = useCallback(
+    async (nextRatings: WellnessRatings) => {
+      if (!pet) return;
+
+      setSaving(true);
+      try {
+        const { remoteFailed } = await database.saveWellnessCheckIn(
+          pet.id,
+          weekStart,
+          nextRatings,
+        );
+        markRemoteSyncPending(remoteFailed);
+        showRemoteFallbackNotice(remoteFailed);
+        await refresh();
+      } finally {
+        setSaving(false);
+      }
+    },
+    [markRemoteSyncPending, pet, refresh, weekStart],
+  );
+
+  function handleRatingChange(metricId: WellnessMetricId, value: number) {
+    setRatings((current) => ({ ...current, [metricId]: value }));
   }
 
-  if (!loading && !pet) {
+  async function handleSaveCheckIn() {
+    if (!canSave) {
+      Alert.alert(
+        'Complete your check-in',
+        'Please rate all five wellness areas before saving.',
+      );
+      return;
+    }
+
+    await persistRatings(ratings);
+  }
+
+  if (loading) {
     return (
-      <ScreenLayout scrollable={false}>
+      <SafeScreen style={styles.screen}>
+        <LoadingState message="Loading wellness check-in..." />
+      </SafeScreen>
+    );
+  }
+
+  if (!pet) {
+    return (
+      <SafeScreen style={styles.screen}>
         <EmptyState
           title="Add a pet first"
-          message="Create a pet profile to discover missing moments."
+          message="Create a pet profile to start weekly wellness check-ins."
           actionLabel="Create Pet Profile"
           onAction={() => router.push('/pet-profile')}
         />
-      </ScreenLayout>
+      </SafeScreen>
     );
   }
 
   return (
-    <ScreenLayout loading={loading} loadingMessage="Loading moments...">
-      <OfflineBanner visible={remoteSyncPending} />
-
-      <AppHeader
-        title="Missing Moments"
-        subtitle="Spot lifestyle memories you may be creating—and ones worth capturing this week."
-        showDisclaimer
-      />
-
-      <PrimaryButton
-        title={result ? 'Refresh Analysis' : 'Discover Missing Moments'}
-        loading={generating}
-        onPress={handleGenerate}
-      />
-
-      {result ? (
-        <View style={styles.results}>
-          <MomentCard
-            title="Moments Being Created"
-            items={result.moments_being_created}
-            accent="green"
-          />
-          <MomentCard
-            title="Moments Potentially Missing"
-            items={result.moments_potentially_missing}
-            accent="orange"
-          />
-          <MomentCard
-            title="Suggestions for This Week"
-            items={result.suggestions}
-            accent="neutral"
-          />
-        </View>
+    <SafeScreen style={styles.screen} edges={['top']}>
+      {view === 'check-in' ? (
+        <WellnessCheckInHeader
+          petName={pet.name}
+          weekLabel={weekLabel}
+          streak={streak}
+          average={progress.average}
+          completed={progress.completed}
+          total={progress.total}
+        />
       ) : (
-        <View style={styles.results}>
-          <EmptyState
-            emoji="💡"
-            title="Discover what's missing"
-            message="Neo will suggest simple, free ways to capture more meaningful moments this week."
-          />
-        </View>
+        <WellnessTrendsHeader
+          checkIns={wellnessCheckIns}
+          range={trendRange}
+          onRangeChange={setTrendRange}
+        />
       )}
-    </ScreenLayout>
+
+      <WellnessViewToggle value={view} onChange={setView} />
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingHorizontal: horizontalPadding },
+        ]}
+        showsVerticalScrollIndicator={false}>
+        <OfflineBanner visible={remoteSyncPending} />
+
+        {view === 'check-in' ? (
+          <>
+            {WELLNESS_METRICS.map((metric) => (
+              <WellnessMetricCard
+                key={metric.id}
+                metric={metric}
+                value={ratings[metric.id]}
+                onChange={(value) => handleRatingChange(metric.id, value)}
+              />
+            ))}
+
+            <AuthPrimaryButton
+              title={saving ? 'Saving...' : 'Save Check-In'}
+              disabled={saving || !canSave}
+              onPress={handleSaveCheckIn}
+              variant="onboarding"
+              style={styles.saveButton}
+            />
+
+            <WellnessPreviousCheckIns
+              checkIns={wellnessCheckIns}
+              excludeWeekStart={weekStart}
+            />
+          </>
+        ) : (
+          <WellnessHistoryTab checkIns={wellnessCheckIns} range={trendRange} />
+        )}
+      </ScrollView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  results: {
-    marginTop: Spacing.lg,
+  screen: {
+    backgroundColor: AuthColors.quickAddBackground,
+  },
+  content: {
+    paddingBottom: Platform.OS === 'ios' ? 130 : 110,
+  },
+  saveButton: {
+    borderRadius: 14,
+    marginTop: 4,
+    marginBottom: 8,
   },
 });

@@ -1,17 +1,23 @@
+import { AuthColors, AuthChartColors } from '@/constants/authTheme';
+import { withAppFont } from '@/constants/fonts';
+
 export const Colors = {
-  background: '#FFF8F3',
-  card: '#FFFFFF',
-  primary: '#E8876A',
-  primaryDark: '#D06B4F',
-  accent: '#7BAE7F',
-  text: '#3D2C2C',
-  textSecondary: '#8B7355',
-  textMuted: '#B5A090',
-  border: '#F0E4DA',
-  error: '#D64545',
-  tabInactive: '#C4B5A5',
-  disclaimerBg: '#FFF3E8',
+  background: AuthColors.background,
+  card: AuthColors.card,
+  primary: AuthColors.primary,
+  primaryDark: AuthColors.primaryDark,
+  accent: AuthColors.accent,
+  text: AuthColors.text,
+  textSecondary: AuthColors.textSecondary,
+  textMuted: AuthColors.textMuted,
+  border: AuthColors.border,
+  error: AuthColors.error,
+  tabInactive: AuthColors.textMuted,
+  disclaimerBg: AuthColors.surfaceWarm,
+  snapshotBlue: AuthColors.accentViolet,
 };
+
+export { AuthChartColors as ChartColors };
 
 export const Spacing = {
   xs: 4,
@@ -31,16 +37,26 @@ export const Radius = {
 };
 
 export const Typography = {
-  hero: { fontSize: 28, fontWeight: '700' as const, lineHeight: 34 },
-  title: { fontSize: 22, fontWeight: '700' as const, lineHeight: 28 },
-  subtitle: { fontSize: 18, fontWeight: '600' as const, lineHeight: 24 },
-  body: { fontSize: 16, fontWeight: '400' as const, lineHeight: 22 },
-  caption: { fontSize: 14, fontWeight: '400' as const, lineHeight: 20 },
-  label: { fontSize: 14, fontWeight: '600' as const, lineHeight: 18 },
+  hero: { fontSize: 28, lineHeight: 34, ...withAppFont('700') },
+  title: { fontSize: 22, lineHeight: 28, ...withAppFont('700') },
+  subtitle: { fontSize: 18, lineHeight: 24, ...withAppFont('600') },
+  heading1: { fontSize: 34, lineHeight: 38, ...withAppFont('700') },
+  heading2: { fontSize: 28, lineHeight: 32, ...withAppFont('700') },
+  heading3: { fontSize: 24, lineHeight: 30, ...withAppFont('700') },
+  heading4: { fontSize: 20, lineHeight: 26, ...withAppFont('700') },
+  heading5: { fontSize: 18, lineHeight: 24, ...withAppFont('700') },
+  subheading: { fontSize: 16, lineHeight: 22, ...withAppFont('600') },
+  subheadingSm: { fontSize: 14, lineHeight: 20, ...withAppFont('600') },
+  body: { fontSize: 16, lineHeight: 22, ...withAppFont('400') },
+  caption: { fontSize: 14, lineHeight: 20, ...withAppFont('400') },
+  label: { fontSize: 14, lineHeight: 18, ...withAppFont('600') },
+  button: { fontSize: 17, ...withAppFont('700') },
 };
 
 export const DISCLAIMER =
   'Neo creates lifestyle and memory suggestions only. It does not provide veterinary or medical advice.';
+
+export const AGE_UNIT_OPTIONS = ['years', 'months'] as const;
 
 export const SPECIES_OPTIONS = [
   'Dog',
@@ -62,6 +78,6 @@ export const FREQUENCY_OPTIONS = [
 export const WEEKLY_SUGGESTIONS = [
   'Take one new photo',
   'Try one new walking route',
-  'Add one memory note',
-  'Try a 5-minute enrichment game',
+  'Create a mini memory note',
+  'Add a 5-minute enrichment game',
 ] as const;

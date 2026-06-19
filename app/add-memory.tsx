@@ -1,0 +1,451 @@
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+
+import { EmptyState } from '@/components/EmptyState';
+import { LoadingState } from '@/components/LoadingState';
+import { OfflineBanner } from '@/components/OfflineBanner';
+import { QuickAddCategoryPicker, QuickAddDateField } from '@/components/QuickAddCategoryPicker';
+import {
+  QuickAddCaption,
+  QuickAddField,
+  QuickAddInput,
+} from '@/components/QuickAddField';
+import { QuickAddMilestoneHero } from '@/components/QuickAddMilestoneHero';
+import { QuickAddMilestonePhotoRow } from '@/components/QuickAddMilestonePhotoRow';
+import { QuickAddPhotoArea } from '@/components/QuickAddPhotoArea';
+import { QuickAddSaveButton } from '@/components/QuickAddSaveButton';
+import { QuickAddScreenHeader } from '@/components/QuickAddScreenHeader';
+import { QuickAddSuggestedMilestones } from '@/components/QuickAddSuggestedMilestones';
+import { SafeScreen } from '@/components/SafeScreen';
+import {
+  CAPTION_MAX_LENGTH,
+  NOTES_MAX_LENGTH,
+} from '@/constants/memoryForm';
+import { AuthColors, AuthShadow, AuthTypography } from '@/constants/authTheme';
+import { Spacing } from '@/constants/theme';
+import { usePet } from '@/context/PetContext';
+import { useResponsive } from '@/hooks/useResponsive';
+import { database } from '@/lib/database';
+import { drafts } from '@/services/drafts';
+import {
+  showPermissionAlert,
+  showRemoteFallbackNotice,
+  showSaveError,
+} from '@/utils/feedback';
+import {
+  formatMemoryDate,
+  parseMemoryDate,
+  toMemoryDateIso,
+} from '@/utils/memoryDate';
+import { hasErrors, validateMemoryForm, type ValidationErrors } from '@/utils/validation';
+import type {
+  Memory,
+  MemoryCategory,
+  MemoryDraft,
+  MemoryEntryType,
+} from '@/types';
+
+function memoryToDraft(memory: Memory): MemoryDraft {
+  return {
+    entry_type: memory.entry_type ?? 'memory',
+    category: memory.category ?? 'Memory',
+    title: memory.title,
+    description: memory.description,
+    photo_uris: memory.photo_uri ? [memory.photo_uri] : [],
+    memory_date: memory.created_at,
+    sentiment: memory.sentiment,
+  };
+}
+
+function createEmptyDraft(): MemoryDraft {
+  return {
+    entry_type: 'memory',
+    category: 'Memory',
+    title: '',
+    description: '',
+    photo_uris: [],
+    memory_date: toMemoryDateIso(new Date()),
+  };
+}
+
+function normalizeDraft(draft: Partial<MemoryDraft> & { photo_uri?: string }): MemoryDraft {
+  const empty = createEmptyDraft();
+
+  return {
+    entry_type: draft.entry_type ?? empty.entry_type,
+    category: draft.category ?? empty.category,
+    title: draft.title ?? empty.title,
+    description: draft.description ?? empty.description,
+    photo_uris:
+      draft.photo_uris ??
+      (draft.photo_uri ? [draft.photo_uri] : empty.photo_uris),
+    memory_date: draft.memory_date ?? empty.memory_date,
+    sentiment: draft.sentiment,
+  };
+}
+
+function mapSuggestedToCategory(label: string): MemoryCategory {
+  switch (label) {
+    case 'Birthday':
+      return 'Birthday';
+    case 'Special Moment':
+      return 'Favorite Thing';
+    default:
+      return 'Memory';
+  }
+}
+
+export default function AddMemoryScreen() {
+  const { id, type } = useLocalSearchParams<{ id?: string; type?: string }>();
+  const isEditing = Boolean(id);
+  const { pet, refresh, markRemoteSyncPending, remoteSyncPending } = usePet();
+  const { horizontalPadding } = useResponsive();
+  const [form, setForm] = useState<MemoryDraft>(createEmptyDraft());
+  const [errors, setErrors] = useState<ValidationErrors<MemoryDraft>>({});
+  const [saving, setSaving] = useState(false);
+  const [loadingMemory, setLoadingMemory] = useState(isEditing);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing || !pet || !id) return;
+
+    let active = true;
+    setLoadingMemory(true);
+
+    database.getMemory(pet.id, id).then((memory) => {
+      if (!active) return;
+      if (memory) {
+        setForm(memoryToDraft(memory));
+      }
+      setLoadingMemory(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [id, isEditing, pet]);
+
+  useEffect(() => {
+    if (isEditing) return;
+
+    drafts.getMemory().then((draft) => {
+      if (draft) {
+        setForm(normalizeDraft(draft));
+        return;
+      }
+
+      if (type === 'milestone') {
+        setForm({
+          ...createEmptyDraft(),
+          entry_type: 'milestone',
+          category: 'Memory',
+          title: 'First Day Home',
+        });
+      }
+    });
+  }, [isEditing, type]);
+
+  useEffect(() => {
+    if (isEditing) return;
+    drafts.saveMemory(form);
+  }, [form, isEditing]);
+
+  function updateField<K extends keyof MemoryDraft>(key: K, value: MemoryDraft[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+    if (errors[key]) {
+      setErrors((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+    }
+  }
+
+  function handleSuggestedMilestone(title: string, label: string) {
+    updateField('title', title);
+    updateField('category', mapSuggestedToCategory(label));
+  }
+
+  async function pickPhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showPermissionAlert('photos');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      updateField('photo_uris', [result.assets[0].uri]);
+    }
+  }
+
+  function handleDateChange(event: DateTimePickerEvent, selectedDate?: Date) {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+
+    if (event.type === 'dismissed' || !selectedDate) return;
+    updateField('memory_date', toMemoryDateIso(selectedDate));
+  }
+
+  async function handleSave() {
+    if (!pet) return;
+
+    const nextErrors = validateMemoryForm(form);
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) return;
+
+    setSaving(true);
+    try {
+      const payload = {
+        title: form.title.trim(),
+        description: form.description.trim(),
+        photo_uri: form.photo_uris[0],
+        entry_type: form.entry_type,
+        category: form.category,
+        sentiment: form.sentiment,
+        created_at: form.memory_date,
+      };
+
+      const { remoteFailed } = isEditing && id
+        ? await database.updateMemory(pet.id, id, payload)
+        : await database.saveMemory(pet.id, payload);
+
+      markRemoteSyncPending(remoteFailed);
+      showRemoteFallbackNotice(remoteFailed);
+      if (!isEditing) {
+        await drafts.clearMemory();
+      }
+      await refresh();
+      router.replace('/(tabs)');
+    } catch (error) {
+      showSaveError(isEditing ? 'Memory update' : 'Memory save', error);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!pet) {
+    return (
+      <SafeScreen style={styles.screen}>
+        <EmptyState
+          title="Add a pet first"
+          message="Create a pet profile before saving memories."
+          actionLabel="Create Pet Profile"
+          onAction={() => router.push('/pet-profile')}
+        />
+      </SafeScreen>
+    );
+  }
+
+  const selectedDate = parseMemoryDate(form.memory_date);
+  const isMilestone = form.entry_type === 'milestone';
+  const saveLabel = isEditing
+    ? 'Save Changes'
+    : isMilestone
+      ? 'Save Milestone'
+      : 'Save Memory';
+
+  if (loadingMemory) {
+    return (
+      <SafeScreen style={styles.screen}>
+        <LoadingState message="Loading memory..." />
+      </SafeScreen>
+    );
+  }
+
+  return (
+    <SafeScreen style={styles.screen} edges={['top']}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingHorizontal: horizontalPadding }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
+          <OfflineBanner visible={remoteSyncPending} />
+
+          {isMilestone ? (
+            <>
+              <QuickAddScreenHeader
+                title={isEditing ? 'Edit Milestone' : 'Add Milestone'}
+                onBack={() => router.back()}
+              />
+
+              <View style={styles.formCard}>
+                <QuickAddMilestoneHero />
+
+                <QuickAddField label="Milestone Title" error={errors.title}>
+                  <QuickAddInput
+                    value={form.title}
+                    onChangeText={(title) => updateField('title', title)}
+                    placeholder="First Day Home"
+                    autoCapitalize="words"
+                  />
+                </QuickAddField>
+
+                <QuickAddDateField
+                  label="Date"
+                  value={formatMemoryDate(selectedDate)}
+                  onPress={() => setShowDatePicker(true)}
+                />
+
+                <QuickAddMilestonePhotoRow
+                  photoUri={form.photo_uris[0]}
+                  onPress={pickPhoto}
+                />
+
+                <QuickAddField label="Notes" error={errors.description} multiline>
+                  <QuickAddCaption
+                    value={form.description}
+                    maxLength={NOTES_MAX_LENGTH}
+                    onChangeText={(description) => updateField('description', description)}
+                    placeholder="The day we brought Buddy home. Beginning of our forever journey together."
+                  />
+                </QuickAddField>
+
+                <QuickAddSuggestedMilestones
+                  selectedTitle={form.title}
+                  onSelect={handleSuggestedMilestone}
+                />
+
+                <QuickAddSaveButton label={saveLabel} loading={saving} onPress={handleSave} />
+              </View>
+            </>
+          ) : (
+            <>
+              <QuickAddScreenHeader
+                title={isEditing ? 'Edit Memory' : 'Add Memory'}
+                onBack={() => router.back()}
+              />
+
+              <View style={styles.formCard}>
+                <QuickAddPhotoArea photoUri={form.photo_uris[0]} onPick={pickPhoto} />
+
+                <QuickAddField label="Title" error={errors.title}>
+                  <QuickAddInput
+                    value={form.title}
+                    onChangeText={(title) => updateField('title', title)}
+                    placeholder="First Beach Trip"
+                    autoCapitalize="words"
+                  />
+                </QuickAddField>
+
+                <QuickAddField label="Caption" error={errors.description} multiline>
+                  <QuickAddCaption
+                    value={form.description}
+                    maxLength={CAPTION_MAX_LENGTH}
+                    onChangeText={(description) => updateField('description', description)}
+                    placeholder="Buddy absolutely loved the beach! He ran, played and had the best time chasing the waves."
+                  />
+                </QuickAddField>
+
+                <QuickAddDateField
+                  label="Date"
+                  value={formatMemoryDate(selectedDate)}
+                  onPress={() => setShowDatePicker(true)}
+                />
+
+                <QuickAddCategoryPicker
+                  value={form.category}
+                  onChange={(category) => updateField('category', category)}
+                />
+
+                <QuickAddSaveButton label={saveLabel} loading={saving} onPress={handleSave} />
+              </View>
+            </>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {showDatePicker ? (
+        Platform.OS === 'ios' ? (
+          <Modal transparent animationType="slide" visible>
+            <Pressable style={styles.modalBackdrop} onPress={() => setShowDatePicker(false)} />
+            <View style={styles.modalSheet}>
+              <View style={styles.modalHeader}>
+                <Pressable onPress={() => setShowDatePicker(false)}>
+                  <Text style={styles.modalAction}>Done</Text>
+                </Pressable>
+              </View>
+              <DateTimePicker
+                value={selectedDate}
+                mode="date"
+                display="spinner"
+                maximumDate={new Date()}
+                onChange={handleDateChange}
+              />
+            </View>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={selectedDate}
+            mode="date"
+            display="default"
+            maximumDate={new Date()}
+            onChange={handleDateChange}
+          />
+        )
+      ) : null}
+    </SafeScreen>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: AuthColors.emptyTimelineBackground,
+  },
+  flex: {
+    flex: 1,
+  },
+  content: {
+    paddingTop: Spacing.sm,
+    paddingBottom: Platform.OS === 'ios' ? 120 : 100,
+  },
+  formCard: {
+    backgroundColor: AuthColors.background,
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 24,
+    ...AuthShadow.card,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(45, 38, 64, 0.35)',
+  },
+  modalSheet: {
+    backgroundColor: AuthColors.card,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 24,
+  },
+  modalHeader: {
+    alignItems: 'flex-end',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  modalAction: {
+    ...AuthTypography.label,
+    color: AuthColors.onboardingPrimary,
+    fontSize: 16,
+  },
+});

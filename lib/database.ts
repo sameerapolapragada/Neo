@@ -10,6 +10,9 @@ import type {
   MissingMoments,
   MissingMomentsContent,
   Pet,
+  WellnessCheckIn,
+  WellnessRatings,
+  WeightEntry,
 } from '@/types';
 
 export type { DataSource } from '@/lib/databaseHelpers';
@@ -70,6 +73,22 @@ export const database = {
       photo_uri: pet.photo_uri ?? null,
     };
 
+    const localPet = {
+      id: pet.id,
+      name: pet.name,
+      species: pet.species,
+      breed: pet.breed,
+      age: pet.age,
+      weight: pet.weight,
+      photo_uri: pet.photo_uri,
+      birthday: pet.birthday,
+      gender: pet.gender,
+      adoption_date: pet.adoption_date,
+      microchip_id: pet.microchip_id,
+      vet_name: pet.vet_name,
+      vet_clinic: pet.vet_clinic,
+    };
+
     const supabase = getSupabaseClient();
     const result = await writeWithFallback(
       supabase
@@ -94,23 +113,22 @@ export const database = {
             return data as Pet;
           }
         : null,
-      () =>
-        localStorage.savePet({
-          id: pet.id,
-          name: pet.name,
-          species: pet.species,
-          breed: pet.breed,
-          age: pet.age,
-          weight: pet.weight,
-          photo_uri: pet.photo_uri,
-        }),
+      () => localStorage.savePet(localPet),
       'Save pet',
     );
 
-    await cachePet(result.data);
+    const mergedPet: Pet = {
+      ...result.data,
+      birthday: pet.birthday,
+      gender: pet.gender,
+      adoption_date: pet.adoption_date,
+      microchip_id: pet.microchip_id,
+      vet_name: pet.vet_name,
+      vet_clinic: pet.vet_clinic,
+    };
     await localStorage.setOnboardingComplete();
 
-    return { pet: result.data, remoteFailed: result.remoteFailed };
+    return { pet: mergedPet, remoteFailed: result.remoteFailed };
   },
 
   async saveLifestyleAnswers(
@@ -267,7 +285,7 @@ export const database = {
 
   async saveMemory(
     petId: string,
-    memory: Omit<Memory, 'id' | 'pet_id' | 'created_at'>,
+    memory: Omit<Memory, 'id' | 'pet_id' | 'created_at'> & { created_at?: string },
   ): Promise<{ memory: Memory; remoteFailed: boolean }> {
     const supabase = getSupabaseClient();
     const result = await writeWithFallback(
@@ -280,6 +298,7 @@ export const database = {
                 title: memory.title,
                 description: memory.description,
                 photo_uri: memory.photo_uri ?? null,
+                ...(memory.created_at ? { created_at: memory.created_at } : {}),
               })
               .select()
               .single();
@@ -291,8 +310,15 @@ export const database = {
       'Save memory',
     );
 
-    await localStorage.cacheMemory(result.data);
-    return { memory: result.data, remoteFailed: result.remoteFailed };
+    const mergedMemory: Memory = {
+      ...result.data,
+      entry_type: memory.entry_type,
+      category: memory.category,
+      sentiment: memory.sentiment,
+    };
+
+    await localStorage.cacheMemory(mergedMemory);
+    return { memory: mergedMemory, remoteFailed: result.remoteFailed };
   },
 
   async getMemories(petId: string): Promise<Memory[]> {
@@ -314,5 +340,170 @@ export const database = {
     );
 
     return result.data ?? [];
+  },
+
+  async getMemory(petId: string, memoryId: string): Promise<Memory | null> {
+    const supabase = getSupabaseClient();
+    const result = await readWithFallback(
+      supabase
+        ? async () => {
+            const { data, error } = await supabase
+              .from('memories')
+              .select('*')
+              .eq('pet_id', petId)
+              .eq('id', memoryId)
+              .maybeSingle();
+            if (error) throw error;
+            return (data as Memory) ?? null;
+          }
+        : null,
+      () => localStorage.getMemory(petId, memoryId),
+      'Fetch memory',
+    );
+
+    return result.data;
+  },
+
+  async updateMemory(
+    petId: string,
+    memoryId: string,
+    memory: Omit<Memory, 'id' | 'pet_id' | 'created_at'> & { created_at?: string },
+  ): Promise<{ memory: Memory; remoteFailed: boolean }> {
+    const payload = {
+      title: memory.title,
+      description: memory.description,
+      photo_uri: memory.photo_uri ?? null,
+      ...(memory.created_at ? { created_at: memory.created_at } : {}),
+    };
+
+    const supabase = getSupabaseClient();
+    const result = await writeWithFallback(
+      supabase
+        ? async () => {
+            const { data, error } = await supabase
+              .from('memories')
+              .update(payload)
+              .eq('pet_id', petId)
+              .eq('id', memoryId)
+              .select()
+              .single();
+            if (error) throw error;
+            return data as Memory;
+          }
+        : null,
+      () =>
+        localStorage.updateMemory(petId, memoryId, {
+          title: memory.title,
+          description: memory.description,
+          photo_uri: memory.photo_uri,
+          entry_type: memory.entry_type,
+          category: memory.category,
+          sentiment: memory.sentiment,
+          ...(memory.created_at ? { created_at: memory.created_at } : {}),
+        }),
+      'Update memory',
+    );
+
+    const mergedMemory: Memory = {
+      ...result.data,
+      entry_type: memory.entry_type,
+      category: memory.category,
+      sentiment: memory.sentiment,
+    };
+
+    await localStorage.cacheMemory(mergedMemory);
+    return { memory: mergedMemory, remoteFailed: result.remoteFailed };
+  },
+
+  async deleteMemory(
+    petId: string,
+    memoryId: string,
+  ): Promise<{ remoteFailed: boolean }> {
+    const supabase = getSupabaseClient();
+    const result = await writeWithFallback(
+      supabase
+        ? async () => {
+            const { error } = await supabase
+              .from('memories')
+              .delete()
+              .eq('pet_id', petId)
+              .eq('id', memoryId);
+            if (error) throw error;
+            return true;
+          }
+        : null,
+      async () => {
+        await localStorage.deleteMemory(petId, memoryId);
+        return true;
+      },
+      'Delete memory',
+    );
+
+    if (result.source === 'remote') {
+      await localStorage.deleteMemory(petId, memoryId);
+    }
+
+    return { remoteFailed: result.remoteFailed };
+  },
+
+  async getWellnessCheckIns(petId: string): Promise<WellnessCheckIn[]> {
+    return localStorage.getWellnessCheckIns(petId);
+  },
+
+  async getWellnessCheckInForWeek(
+    petId: string,
+    weekStart: string,
+  ): Promise<WellnessCheckIn | null> {
+    return localStorage.getWellnessCheckInForWeek(petId, weekStart);
+  },
+
+  async saveWellnessCheckIn(
+    petId: string,
+    weekStart: string,
+    ratings: WellnessRatings,
+  ): Promise<{ checkIn: WellnessCheckIn; remoteFailed: boolean }> {
+    const checkIn = await localStorage.saveWellnessCheckIn(petId, weekStart, ratings);
+    return { checkIn, remoteFailed: !isSupabaseConfigured };
+  },
+
+  async getWeightEntries(petId: string): Promise<WeightEntry[]> {
+    return localStorage.getWeightEntries(petId);
+  },
+
+  async saveWeightEntry(
+    petId: string,
+    entry: Omit<WeightEntry, 'id' | 'pet_id' | 'created_at'>,
+  ): Promise<{ entry: WeightEntry; remoteFailed: boolean }> {
+    const saved = await localStorage.saveWeightEntry(petId, entry);
+    const latest = await localStorage.getWeightEntries(petId);
+    const newest = latest[0];
+
+    if (newest) {
+      const pet = await localStorage.getPet(petId);
+      if (pet) {
+        await localStorage.savePet({ ...pet, weight: newest.weight });
+      }
+    }
+
+    return { entry: saved, remoteFailed: !isSupabaseConfigured };
+  },
+
+  async deleteWeightEntry(
+    petId: string,
+    entryId: string,
+  ): Promise<{ remoteFailed: boolean }> {
+    await localStorage.deleteWeightEntry(petId, entryId);
+
+    const remaining = await localStorage.getWeightEntries(petId);
+    const pet = await localStorage.getPet(petId);
+
+    if (pet) {
+      await localStorage.savePet({
+        ...pet,
+        weight: remaining[0]?.weight,
+      });
+    }
+
+    return { remoteFailed: !isSupabaseConfigured };
   },
 };
