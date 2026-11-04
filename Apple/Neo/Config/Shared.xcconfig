@@ -1,0 +1,5 @@
+// Shared defaults. Secrets.xcconfig, if present, overrides these.
+// Never put a service-role key in either file.
+SUPABASE_URL =
+SUPABASE_ANON_KEY =
+#include? "Secrets.xcconfig"
