@@ -76,7 +76,8 @@ struct MainTabView: View {
                 moments: dependencies.moments,
                 media: dependencies.media,
                 pets: dependencies.pets,
-                board: board
+                board: board,
+                petDeletion: dependencies.petDeletion
             )
         )
         _momentsModel = State(

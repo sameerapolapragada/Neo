@@ -10,9 +10,9 @@ final class MemoryDetailTests: XCTestCase {
         let momentId = UUID()
         let repository = InMemoryMomentRepository()
         let media = [
-            media(owner: owner, moment: momentId, path: path(owner, petId, "c.jpg"), order: 2),
-            media(owner: owner, moment: momentId, path: path(owner, petId, "a.jpg"), order: 0),
-            media(owner: owner, moment: momentId, path: path(owner, petId, "b.jpg"), order: 1)
+            media(owner: owner, moment: momentId, path: path(owner, momentId, "c.jpg"), order: 2),
+            media(owner: owner, moment: momentId, path: path(owner, momentId, "a.jpg"), order: 0),
+            media(owner: owner, moment: momentId, path: path(owner, momentId, "b.jpg"), order: 1)
         ]
         _ = try await repository.upsert(moment(owner: owner, pet: petId, id: momentId, title: "Walk", media: media))
         let pets = try await ownedPets(owner: owner, pet: petId)
@@ -22,9 +22,9 @@ final class MemoryDetailTests: XCTestCase {
         XCTAssertEqual(model.presentation, .loaded)
         XCTAssertEqual(model.photos.map(\.sortOrder), [0, 1, 2])
         XCTAssertEqual(model.photos.map(\.storagePath), [
-            path(owner, petId, "a.jpg"),
-            path(owner, petId, "b.jpg"),
-            path(owner, petId, "c.jpg")
+            path(owner, momentId, "a.jpg"),
+            path(owner, momentId, "b.jpg"),
+            path(owner, momentId, "c.jpg")
         ])
         XCTAssertEqual(model.positionLabel, "1 / 3")
         model.selectPhoto(2)
@@ -61,7 +61,7 @@ final class MemoryDetailTests: XCTestCase {
         let petId = UUID()
         let momentId = UUID()
         let repository = InMemoryMomentRepository()
-        let existing = path(owner, petId, "cover.jpg")
+        let existing = path(owner, momentId, "cover.jpg")
         let original = moment(
             owner: owner,
             pet: petId,
@@ -111,7 +111,7 @@ final class MemoryDetailTests: XCTestCase {
         let owner = UUID()
         let petId = UUID()
         let momentId = UUID()
-        let secretPath = path(owner, petId, "file.jpg")
+        let secretPath = path(owner, momentId, "file.jpg")
         let repository = InMemoryMomentRepository()
         _ = try await repository.upsert(
             moment(owner: owner, pet: petId, id: momentId, title: "Our walk", caption: "Sun on the rug.", media: [
@@ -325,7 +325,7 @@ final class MemoryDetailTests: XCTestCase {
     }
 
     private func onePhoto(_ owner: UUID, _ pet: UUID, _ moment: UUID) -> MomentMedia {
-        media(owner: owner, moment: moment, path: path(owner, pet, "photo.jpg"), order: 0)
+        media(owner: owner, moment: moment, path: path(owner, moment, "photo.jpg"), order: 0)
     }
 
     private func media(owner: UUID, moment: UUID, path: String, order: Int) -> MomentMedia {
@@ -342,8 +342,17 @@ final class MemoryDetailTests: XCTestCase {
         )
     }
 
-    private func path(_ owner: UUID, _ pet: UUID, _ file: String) -> String {
-        "\(owner.uuidString.lowercased())/\(pet.uuidString.lowercased())/\(file)"
+    private func path(_ owner: UUID, _ moment: UUID, _ file: String) -> String {
+        let fileIds = [
+            "a.jpg": "00000000-0000-0000-0000-0000000000a1",
+            "b.jpg": "00000000-0000-0000-0000-0000000000b1",
+            "c.jpg": "00000000-0000-0000-0000-0000000000c1",
+            "cover.jpg": "00000000-0000-0000-0000-0000000000c0",
+            "file.jpg": "00000000-0000-0000-0000-0000000000f1",
+            "photo.jpg": "00000000-0000-0000-0000-0000000000d1"
+        ]
+        let fileId = UUID(uuidString: fileIds[file]!)!
+        return MediaObjectPath.momentJPEG(ownerId: owner, petId: UUID(), momentId: moment, fileId: fileId)
     }
 }
 

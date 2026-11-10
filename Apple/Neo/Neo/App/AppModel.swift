@@ -11,6 +11,9 @@ struct AppDependencies {
     var uploader: any MediaUploading
     var selection: any ActivePetStoring
     var accountDeletion: any AccountDeleting
+    var momentDeletion: (any MomentDeleting)? = nil
+    var petDeletion: (any PetDeleting)? = nil
+    var storageCleanup: (any StorageCleaning)? = nil
 
     var editing: ProfileEditingDependencies {
         ProfileEditingDependencies(
@@ -18,7 +21,10 @@ struct AppDependencies {
             uploader: uploader,
             media: media,
             moments: moments,
-            memories: memories
+            memories: memories,
+            momentDeletion: momentDeletion,
+            petDeletion: petDeletion,
+            storageCleanup: storageCleanup
         )
     }
 }
@@ -28,7 +34,15 @@ extension AppDependencies {
     static func live(configuration: SupabaseConfiguration) -> AppDependencies {
         let client = SupabaseClientFactory.client(configuration)
         let store = SupabaseMediaStore(client: client)
-        let endpoint = configuration.url.appending(path: "functions/v1/delete-account")
+        let token: @Sendable () async throws -> String = {
+            let session = try await client.auth.session
+            return session.accessToken
+        }
+        let deletion = SupabaseCompanionDeletion(
+            functionsBase: configuration.url.appending(path: "functions/v1"),
+            anonKey: configuration.anonKey,
+            accessToken: token
+        )
         return AppDependencies(
             auth: SupabaseAuthService(client: client),
             pets: SupabasePetRepository(client: client),
@@ -38,13 +52,13 @@ extension AppDependencies {
             uploader: store,
             selection: UserDefaultsActivePetStore(),
             accountDeletion: SupabaseAccountDeletion(
-                endpoint: endpoint,
+                endpoint: configuration.url.appending(path: "functions/v1/delete-account"),
                 anonKey: configuration.anonKey,
-                accessToken: {
-                    let session = try await client.auth.session
-                    return session.accessToken
-                }
-            )
+                accessToken: token
+            ),
+            momentDeletion: deletion,
+            petDeletion: deletion,
+            storageCleanup: deletion
         )
     }
 }
@@ -160,7 +174,7 @@ final class AppModel {
             throw AccountDeletionError.missingEmail
         }
         _ = try await dependencies.auth.signIn(email: email, password: password)
-        try await dependencies.accountDeletion.deleteAuthenticatedAccount()
+        try await dependencies.accountDeletion.deleteAuthenticatedAccount(password: password)
         await finishLocalSession()
         remoteSessionRevoked = false
         authError = SessionCleanup.accountDeleted
@@ -171,6 +185,9 @@ final class AppModel {
         guard let dependencies else { return }
         if self.ownerId != ownerId {
             await clearPrivateCaches()
+        }
+        if let cache = dependencies.media as? SignedMediaURLCache {
+            await cache.bind(ownerId: ownerId)
         }
         self.ownerId = ownerId
         remoteSessionRevoked = false

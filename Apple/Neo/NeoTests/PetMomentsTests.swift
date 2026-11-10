@@ -214,8 +214,18 @@ final class PetMomentsTests: XCTestCase {
         let owner = UUID()
         let pet = UUID()
         let momentId = UUID()
-        let cover = "\(owner.uuidString.lowercased())/\(pet.uuidString.lowercased())/cover.jpg"
-        let extra = "\(owner.uuidString.lowercased())/\(pet.uuidString.lowercased())/extra.jpg"
+        let cover = MediaObjectPath.momentJPEG(
+            ownerId: owner,
+            petId: pet,
+            momentId: momentId,
+            fileId: UUID(uuidString: "00000000-0000-0000-0000-0000000000c1")!
+        )
+        let extra = MediaObjectPath.momentJPEG(
+            ownerId: owner,
+            petId: pet,
+            momentId: momentId,
+            fileId: UUID(uuidString: "00000000-0000-0000-0000-0000000000e1")!
+        )
         let moment = makeMoment(
             owner: owner,
             pet: pet,

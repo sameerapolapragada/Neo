@@ -28,11 +28,11 @@ struct PetRow: Codable, Sendable {
         case birthday
         case gender
         case adoptionDate = "adoption_date"
-        case weightValue = "weight_value"
+        case weightValue = "weight"
         case weightUnit = "weight_unit"
         case microchipId = "microchip_id"
-        case photoPath = "photo_path"
-        case bio
+        case photoPath = "profile_photo_path"
+        case bio = "personality"
         case favoriteToy = "favorite_toy"
         case isFavorite = "is_favorite"
         case createdAt = "created_at"
@@ -114,7 +114,7 @@ struct MomentRow: Codable, Sendable {
         title = moment.title
         caption = moment.caption
         category = moment.category.rawValue
-        momentDate = SupabaseDates.timestamp(moment.momentDate)
+        momentDate = SupabaseDates.calendarDay(moment.momentDate)
         isFavorite = moment.isFavorite
         createdAt = SupabaseDates.timestamp(moment.createdAt)
         updatedAt = SupabaseDates.timestamp(moment.updatedAt)
@@ -128,7 +128,9 @@ struct MomentRow: Codable, Sendable {
             title: title,
             caption: caption,
             category: MomentCategory.fromStored(category),
-            momentDate: SupabaseDates.parseTimestamp(momentDate) ?? .now,
+            momentDate: SupabaseDates.parseDay(momentDate, calendar: .current)
+                ?? SupabaseDates.parseTimestamp(momentDate)
+                ?? .now,
             isFavorite: isFavorite,
             media: media.inDisplayOrder(),
             createdAt: SupabaseDates.parseTimestamp(createdAt) ?? .now,
@@ -154,8 +156,8 @@ struct MomentMediaRow: Codable, Sendable {
         case ownerId = "owner_id"
         case storagePath = "storage_path"
         case sortOrder = "sort_order"
-        case contentType = "content_type"
-        case byteCount = "byte_count"
+        case contentType = "mime_type"
+        case byteCount = "file_size"
         case width
         case height
     }
@@ -184,6 +186,28 @@ struct MomentMediaRow: Codable, Sendable {
             width: width,
             height: height
         )
+    }
+}
+
+struct ReplaceMomentMediaParams: Encodable, Sendable {
+    var momentId: UUID
+    var media: [MomentMediaRow]
+
+    enum CodingKeys: String, CodingKey {
+        case momentId = "p_moment_id"
+        case media = "p_media"
+    }
+}
+
+struct ReplaceMomentMediaResult: Decodable, Sendable {
+    var removed: [String]
+}
+
+struct AbandonEmptyMomentParams: Encodable, Sendable {
+    var momentId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case momentId = "p_moment_id"
     }
 }
 

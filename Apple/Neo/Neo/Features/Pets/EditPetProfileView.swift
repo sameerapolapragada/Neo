@@ -15,7 +15,8 @@ struct EditPetProfileView: View {
                 pets: editing.pets,
                 uploader: editing.uploader,
                 media: editing.media,
-                library: library
+                library: library,
+                storageCleanup: editing.storageCleanup
             )
         )
     }

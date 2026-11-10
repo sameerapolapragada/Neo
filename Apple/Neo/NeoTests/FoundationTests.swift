@@ -57,13 +57,99 @@ final class FoundationTests: XCTestCase {
         XCTAssertNotEqual(SupabaseTable.memories, "memories")
     }
 
+    func testPhase1RowsUseTheDatabaseColumnNames() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let momentDay = calendar.date(from: DateComponents(year: 2026, month: 5, day: 2, hour: 15))!
+        let owner = UUID()
+        let petId = UUID()
+        let momentId = UUID()
+        let pet = Pet(
+            id: petId,
+            ownerId: owner,
+            name: "Milo",
+            species: .dog,
+            breed: "",
+            birthday: nil,
+            gender: .unknown,
+            adoptionDate: nil,
+            weightValue: 12.5,
+            weightUnit: .pounds,
+            microchipId: nil,
+            photoPath: MediaObjectPath.jpeg(
+                ownerId: owner,
+                petId: petId,
+                fileId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+            ),
+            bio: "Calm",
+            favoriteToy: nil,
+            isFavorite: false,
+            createdAt: momentDay,
+            updatedAt: momentDay
+        )
+        let petJSON = try jsonObject(PetRow(pet))
+        XCTAssertEqual(petJSON["weight"] as? Double, 12.5)
+        XCTAssertEqual(petJSON["personality"] as? String, "Calm")
+        XCTAssertEqual(petJSON["profile_photo_path"] as? String, pet.photoPath)
+        XCTAssertNil(petJSON["bio"])
+        XCTAssertNil(petJSON["photo_path"])
+        XCTAssertNil(petJSON["weight_value"])
+
+        let moment = PetMoment(
+            id: momentId,
+            ownerId: owner,
+            petId: petId,
+            title: "Park",
+            caption: "",
+            category: .milestone,
+            momentDate: momentDay,
+            isFavorite: false,
+            media: [],
+            createdAt: momentDay,
+            updatedAt: momentDay
+        )
+        let momentJSON = try jsonObject(MomentRow(moment))
+        XCTAssertEqual(momentJSON["moment_date"] as? String, SupabaseDates.calendarDay(momentDay))
+        XCTAssertEqual((momentJSON["moment_date"] as? String)?.count, 10)
+        XCTAssertEqual(momentJSON["category"] as? String, "Milestone")
+
+        let media = MomentMedia(
+            id: UUID(),
+            momentId: momentId,
+            ownerId: owner,
+            storagePath: MediaObjectPath.momentJPEG(
+                ownerId: owner,
+                petId: petId,
+                momentId: momentId,
+                fileId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+            ),
+            sortOrder: 0,
+            contentType: "image/jpeg",
+            byteCount: 1200,
+            width: 800,
+            height: 600
+        )
+        let mediaJSON = try jsonObject(MomentMediaRow(media))
+        XCTAssertEqual(mediaJSON["mime_type"] as? String, "image/jpeg")
+        XCTAssertEqual(mediaJSON["file_size"] as? Int, 1200)
+        XCTAssertNil(mediaJSON["content_type"])
+        XCTAssertNil(mediaJSON["byte_count"])
+    }
+
+    private func jsonObject<T: Encodable>(_ value: T) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(value)
+        let object = try JSONSerialization.jsonObject(with: data)
+        return try XCTUnwrap(object as? [String: Any])
+    }
+
     func testMediaPathsArePrivateObjectKeys() {
         let owner = UUID()
         let pet = UUID()
         let path = MediaObjectPath.jpeg(ownerId: owner, petId: pet)
         XCTAssertTrue(MediaPath.isObjectPath(path))
-        XCTAssertTrue(path.hasPrefix(owner.uuidString.lowercased() + "/"))
-        XCTAssertTrue(path.hasSuffix(".jpg"))
+        XCTAssertTrue(path.contains("/pets/"))
+        XCTAssertTrue(path.contains("/profile/"))
+        XCTAssertTrue(MediaObjectPath.isProfilePhoto(path, ownerId: owner, petId: pet))
         XCTAssertFalse(path.contains("://"))
         XCTAssertFalse(MediaPath.isObjectPath("https://cdn.example/pet.jpg"))
         XCTAssertFalse(MediaPath.isObjectPath("/tmp/pet.jpg"))
@@ -194,12 +280,14 @@ final class FoundationTests: XCTestCase {
     func testSignedURLCacheReusesShortLivedURL() async {
         let signer = CountingSigner()
         let cache = SignedMediaURLCache(signer: signer)
-        let path = "owner/pet/file.jpg"
+        let owner = UUID()
+        let path = MediaObjectPath.jpeg(ownerId: owner, petId: UUID(), fileId: UUID())
+        await cache.bind(ownerId: owner)
         let first = await cache.displayURL(for: path)
         let second = await cache.displayURL(for: path)
         let calls = await signer.calls
         let expiry = await signer.lastExpiry
-        let blocked = await cache.displayURL(for: "https://public.example/file.jpg")
+        let blocked = await cache.displayURL(for: "https://public.example/object/public/file.jpg")
         let missing = await cache.displayURL(for: nil)
         XCTAssertEqual(first, second)
         XCTAssertEqual(calls, 1)

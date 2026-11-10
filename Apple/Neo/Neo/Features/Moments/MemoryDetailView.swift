@@ -20,6 +20,7 @@ struct MemoryDetailView: View {
                 moments: editing.moments,
                 media: editing.media,
                 uploader: editing.uploader,
+                deletion: editing.momentDeletion,
                 board: board
             )
         )
@@ -57,6 +58,19 @@ struct MemoryDetailView: View {
             .padding(.bottom, NeoSpacing.lg)
         }
         .background(NeoColor.cream.ignoresSafeArea())
+        .overlay {
+            if viewModel.isDeleting {
+                ZStack {
+                    NeoColor.cream.opacity(0.72)
+                    ProgressView("Deleting memory")
+                        .padding(NeoSpacing.lg)
+                        .background(NeoColor.white)
+                        .clipShape(RoundedRectangle(cornerRadius: NeoSpacing.cardRadius, style: .continuous))
+                }
+                .ignoresSafeArea()
+                .accessibilityIdentifier("deletingMemory")
+            }
+        }
         .navigationTitle("Memory")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(NeoColor.cream, for: .navigationBar)
@@ -183,6 +197,12 @@ struct MemoryDetailView: View {
                     }
                 }
                 InlineErrorText(message: viewModel.actionError)
+                if viewModel.deleteFailed {
+                    Button("Try Again") { Task { await viewModel.performDelete() } }
+                        .buttonStyle(NeoSecondaryButtonStyle())
+                        .disabled(viewModel.isDeleting)
+                        .accessibilityIdentifier("retryDeleteMemory")
+                }
             }
             .padding(.horizontal, NeoSpacing.screenMargin)
         }

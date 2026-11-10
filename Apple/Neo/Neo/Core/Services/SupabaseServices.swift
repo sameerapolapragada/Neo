@@ -88,6 +88,10 @@ struct SupabasePetRepository: PetRepository {
     func upsert(_ pet: Pet) async throws -> Pet {
         do {
             try MediaPathGuard.validate(pet.photoPath)
+            if let photoPath = pet.photoPath,
+               !MediaObjectPath.isProfilePhoto(photoPath, ownerId: pet.ownerId, petId: pet.id) {
+                throw RepositoryError.invalidPhoto
+            }
             let row = PetRow(pet)
             let saved: PetRow = try await client
                 .from(SupabaseTable.pets)
@@ -165,7 +169,12 @@ struct SupabaseMomentRepository: MomentRepository {
                     throw RepositoryError.invalidPhoto
                 }
                 try MediaPathGuard.validate(item.storagePath)
-                guard MediaObjectPath.belongsToOwner(item.storagePath, ownerId: moment.ownerId) else {
+                guard MediaObjectPath.isMomentPhoto(
+                    item.storagePath,
+                    ownerId: moment.ownerId,
+                    petId: moment.petId,
+                    momentId: moment.id
+                ) else {
                     throw RepositoryError.invalidPhoto
                 }
             }
@@ -179,12 +188,7 @@ struct SupabaseMomentRepository: MomentRepository {
             do {
                 try await replaceMedia(moment.media, momentId: moment.id, ownerId: moment.ownerId)
             } catch {
-                try? await client
-                    .from(SupabaseTable.moments)
-                    .delete()
-                    .eq("id", value: moment.id.uuidString.lowercased())
-                    .eq("owner_id", value: moment.ownerId.uuidString.lowercased())
-                    .execute()
+                try? await abandonEmptyMoment(id: moment.id)
                 throw error
             }
             return saved.moment(media: moment.media.inDisplayOrder())
@@ -214,13 +218,9 @@ struct SupabaseMomentRepository: MomentRepository {
     }
 
     func delete(id: UUID, ownerId: UUID) async throws {
+        _ = ownerId
         do {
-            try await client
-                .from(SupabaseTable.moments)
-                .delete()
-                .eq("id", value: id.uuidString.lowercased())
-                .eq("owner_id", value: ownerId.uuidString.lowercased())
-                .execute()
+            try await abandonEmptyMoment(id: id)
         } catch {
             throw RepositoryErrorMapping.wrap(error)
         }
@@ -279,21 +279,24 @@ struct SupabaseMomentRepository: MomentRepository {
     }
 
     private func replaceMedia(_ media: [MomentMedia], momentId: UUID, ownerId: UUID) async throws {
-        try await client
-            .from(SupabaseTable.momentMedia)
-            .delete()
-            .eq("moment_id", value: momentId.uuidString.lowercased())
-            .eq("owner_id", value: ownerId.uuidString.lowercased())
+        for item in media where item.ownerId != ownerId || item.momentId != momentId {
+            throw RepositoryError.invalidPhoto
+        }
+        let params = ReplaceMomentMediaParams(momentId: momentId, media: media.map(MomentMediaRow.init))
+        let _: ReplaceMomentMediaResult = try await client
+            .rpc("companion_replace_moment_media", params: params)
             .execute()
-        guard !media.isEmpty else { return }
+            .value
+    }
+
+    private func abandonEmptyMoment(id: UUID) async throws {
         try await client
-            .from(SupabaseTable.momentMedia)
-            .insert(media.map(MomentMediaRow.init))
+            .rpc("companion_abandon_empty_moment", params: AbandonEmptyMomentParams(momentId: id))
             .execute()
     }
 
     private static func olderThan(_ cursor: MomentCursor) -> String {
-        let momentDate = quoted(SupabaseDates.timestamp(cursor.momentDate))
+        let momentDate = quoted(SupabaseDates.calendarDay(cursor.momentDate))
         let createdAt = quoted(SupabaseDates.timestamp(cursor.createdAt))
         let id = cursor.id.uuidString.lowercased()
         return [
@@ -402,11 +405,19 @@ struct SupabaseMediaStore: MediaUploading, MediaSigning {
     }
 
     func signedURL(for path: String, expiresIn: Int) async throws -> URL {
-        guard MediaPath.isObjectPath(path) else { throw RepositoryError.invalidPhoto }
+        guard MediaObjectPath.isCanonical(path), !MediaObjectPath.isPublicObjectURL(path) else {
+            throw RepositoryError.invalidPhoto
+        }
         do {
-            return try await client.storage
+            let url = try await client.storage
                 .from(SupabaseTable.mediaBucket)
                 .createSignedURL(path: path, expiresIn: expiresIn)
+            guard !MediaObjectPath.isPublicObjectURL(url.absoluteString) else {
+                throw RepositoryError.invalidPhoto
+            }
+            return url
+        } catch let error as RepositoryError {
+            throw error
         } catch {
             throw RepositoryErrorMapping.wrap(error)
         }

@@ -94,11 +94,59 @@ struct PetProfileView: View {
                     }
                     .padding(.horizontal, NeoSpacing.screenMargin)
                 }
+
+                VStack(alignment: .leading, spacing: NeoSpacing.sm) {
+                    InlineErrorText(message: viewModel.deleteError)
+                    if viewModel.deleteError != nil {
+                        Button("Try Again") { Task { await viewModel.performDelete() } }
+                            .buttonStyle(NeoSecondaryButtonStyle())
+                            .disabled(viewModel.isDeleting)
+                            .accessibilityIdentifier("retryDeletePet")
+                    }
+                    Button("Delete Pet", role: .destructive) {
+                        viewModel.requestDelete()
+                    }
+                    .buttonStyle(NeoDestructiveButtonStyle())
+                    .disabled(viewModel.isDeleting)
+                    .accessibilityIdentifier("deletePet")
+                }
+                .padding(.horizontal, NeoSpacing.screenMargin)
             }
             .padding(.bottom, NeoSpacing.xl)
         }
         .refreshable {
             await viewModel.load()
+        }
+        .overlay {
+            if viewModel.isDeleting {
+                ZStack {
+                    NeoColor.cream.opacity(0.72)
+                    ProgressView("Deleting pet")
+                        .padding(NeoSpacing.lg)
+                        .background(NeoColor.white)
+                        .clipShape(RoundedRectangle(cornerRadius: NeoSpacing.cardRadius, style: .continuous))
+                }
+                .accessibilityIdentifier("deletingPet")
+            }
+        }
+        .confirmationDialog(
+            "Delete \(library.activePet?.name ?? "this pet")?",
+            isPresented: Binding(
+                get: { viewModel.isConfirmingDelete },
+                set: { isPresented in
+                    if !isPresented { viewModel.cancelDelete() }
+                }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Pet", role: .destructive) {
+                Task { await viewModel.performDelete() }
+            }
+            Button("Cancel", role: .cancel) {
+                viewModel.cancelDelete()
+            }
+        } message: {
+            Text("This deletes the pet and every memory saved for them, including their photos.")
         }
     }
 
@@ -403,7 +451,15 @@ private enum PetProfileSampleFactory {
             moments: moments,
             media: editing.media,
             pets: pets,
-            board: MomentBoard()
+            board: MomentBoard(),
+            petDeletion: PetDeletionService(
+                pets: pets,
+                moments: moments,
+                uploader: mediaStore,
+                removePet: { id, owner in
+                    try await pets.deleteOwned(id: id, ownerId: owner)
+                }
+            )
         )
         return (library, viewModel, editing)
     }

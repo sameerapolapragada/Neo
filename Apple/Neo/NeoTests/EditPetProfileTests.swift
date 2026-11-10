@@ -242,9 +242,7 @@ final class EditPetProfileTests: XCTestCase {
         let updates = await pets.upsertCount
         XCTAssertEqual(updates, 1)
         let path = try XCTUnwrap(rows.first?.photoPath)
-        XCTAssertTrue(path.hasPrefix("\(owner.uuidString.lowercased())/\(model.petId.uuidString.lowercased())/"))
-        XCTAssertTrue(path.hasSuffix(".jpg"))
-        XCTAssertTrue(MediaPath.isObjectPath(path))
+        XCTAssertTrue(MediaObjectPath.isProfilePhoto(path, ownerId: owner, petId: model.petId))
     }
 
     func testPhotoReplacementFailure() async throws {
@@ -334,7 +332,11 @@ final class EditPetProfileTests: XCTestCase {
     }
 
     private func objectPath(owner: UUID, pet: UUID) -> String {
-        "\(owner.uuidString.lowercased())/\(pet.uuidString.lowercased())/original.jpg"
+        MediaObjectPath.jpeg(
+            ownerId: owner,
+            petId: pet,
+            fileId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        )
     }
 
     private func samplePNG() -> Data? {

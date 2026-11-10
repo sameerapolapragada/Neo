@@ -273,7 +273,9 @@ final class CreatePetMomentViewModel {
     private let pets: any PetRepository
     private let moments: any MomentRepository
     private let uploader: any MediaUploading
+    private let storageCleanup: (any StorageCleaning)?
     private let board: MomentBoard?
+    private var pendingPhotoRemoval: [String] = []
     private let baselineDate: Date
     private let baselineTitle: String
     private let baselineCaption: String
@@ -325,6 +327,7 @@ final class CreatePetMomentViewModel {
         pets: any PetRepository,
         moments: any MomentRepository,
         uploader: any MediaUploading,
+        storageCleanup: (any StorageCleaning)? = nil,
         board: MomentBoard? = nil,
         now: Date = .now
     ) {
@@ -335,6 +338,7 @@ final class CreatePetMomentViewModel {
         self.pets = pets
         self.moments = moments
         self.uploader = uploader
+        self.storageCleanup = storageCleanup
         self.board = board
         self.baselineDate = now
         self.baselineTitle = ""
@@ -355,6 +359,7 @@ final class CreatePetMomentViewModel {
         pets: any PetRepository,
         moments: any MomentRepository,
         uploader: any MediaUploading,
+        storageCleanup: (any StorageCleaning)? = nil,
         board: MomentBoard? = nil
     ) {
         self.ownerId = ownerId
@@ -364,6 +369,7 @@ final class CreatePetMomentViewModel {
         self.pets = pets
         self.moments = moments
         self.uploader = uploader
+        self.storageCleanup = storageCleanup
         self.board = board
         self.baselineDate = moment.momentDate
         self.baselineTitle = moment.title
@@ -469,16 +475,38 @@ final class CreatePetMomentViewModel {
             let saved = try await moments.upsert(makeMoment(paths: resolved))
             board?.activate(petId: petId, ownerId: ownerId)
             board?.noteSaved(saved)
+            adopt(resolved)
             let kept = Set(resolved)
-            for path in originalPaths where !kept.contains(path) && MediaObjectPath.belongsToOwner(path, ownerId: ownerId) {
-                try? await uploader.deleteUploadedObject(path, ownerId: ownerId)
+            pendingPhotoRemoval.append(contentsOf: originalPaths.filter { !kept.contains($0) })
+            let failed = await finishPhotoCleanup(protected: kept)
+            if failed.isEmpty {
+                saveError = nil
+                didSave = true
+            } else {
+                saveError = "This memory is saved. A previous photo could not be removed. Save again to retry."
+                didSave = false
             }
-            saveError = nil
-            didSave = true
         } catch {
             await recover(uploaded: uploaded)
             saveError = error.localizedDescription
         }
+    }
+
+    private func adopt(_ paths: [String]) {
+        for index in photos.indices where index < paths.count {
+            photos[index].existingPath = paths[index]
+            photos[index].jpeg = nil
+        }
+    }
+
+    private func finishPhotoCleanup(protected: Set<String>) async -> [String] {
+        let unique = Array(Set(pendingPhotoRemoval)).filter { !protected.contains($0) }
+        let failed = await OwnedObjectCleanup.removeReportingFailures(unique, ownerId: ownerId, uploader: uploader)
+        pendingPhotoRemoval = failed
+        if let storageCleanup, !unique.isEmpty {
+            try? await storageCleanup.cleanupOwnedStorage(paths: failed.isEmpty ? unique : failed)
+        }
+        return failed
     }
 
     private func resolvedPaths(recordingNewUploads uploaded: inout [String]) async throws -> [String] {
@@ -500,7 +528,8 @@ final class CreatePetMomentViewModel {
                 }
                 uploaded.append(path)
                 resolved.append(path)
-            } else if let path = photo.existingPath, MediaObjectPath.belongsToOwner(path, ownerId: ownerId) {
+            } else if let path = photo.existingPath,
+                      MediaObjectPath.isMomentPhoto(path, ownerId: ownerId, petId: petId, momentId: momentId) {
                 resolved.append(path)
             } else {
                 throw RepositoryError.invalidPhoto
@@ -544,8 +573,12 @@ final class CreatePetMomentViewModel {
     }
 
     private func recover(uploaded paths: [String]) async {
-        for path in paths where MediaObjectPath.belongsToOwner(path, ownerId: ownerId) {
-            try? await uploader.deleteUploadedObject(path, ownerId: ownerId)
+        let failed = await OwnedObjectCleanup.removeReportingFailures(paths, ownerId: ownerId, uploader: uploader)
+        if !failed.isEmpty {
+            pendingPhotoRemoval = failed
+            if let storageCleanup {
+                try? await storageCleanup.cleanupOwnedStorage(paths: failed)
+            }
         }
         if !isEditing {
             try? await moments.delete(id: momentId, ownerId: ownerId)

@@ -45,6 +45,13 @@ final class PetLibrary {
         selection.setActivePetId(pet.id, for: ownerId)
     }
 
+    func noteDeleted(_ id: UUID) {
+        pets.removeAll { $0.id == id }
+        if activePetId == id {
+            restoreSelection()
+        }
+    }
+
     func noteSaved(_ pet: Pet) {
         guard pet.ownerId == ownerId else { return }
         if let index = pets.firstIndex(where: { $0.id == pet.id }) {

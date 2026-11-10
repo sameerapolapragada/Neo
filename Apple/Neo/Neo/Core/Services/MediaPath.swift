@@ -27,34 +27,83 @@ enum MediaPath {
 }
 
 enum MediaObjectPath {
+    /// `{owner}/pets/{pet}/profile/{file}.jpg`
     static func jpeg(ownerId: UUID, petId: UUID, fileId: UUID = UUID()) -> String {
-        let owner = ownerId.uuidString.lowercased()
-        let pet = petId.uuidString.lowercased()
-        let file = fileId.uuidString.lowercased()
-        return "\(owner)/\(pet)/\(file).jpg"
+        "\(text(ownerId))/pets/\(text(petId))/profile/\(text(fileId)).jpg"
     }
 
-    /// Private object key for one photo on a moment. The first folder is the owner.
+    /// `{owner}/moments/{moment}/{file}.jpg`. The key does not include the pet id.
+    /// `petId` stays in the signature so callers still name the parent pet they checked.
     static func momentJPEG(ownerId: UUID, petId: UUID, momentId: UUID, fileId: UUID = UUID()) -> String {
-        let owner = ownerId.uuidString.lowercased()
-        let pet = petId.uuidString.lowercased()
-        let moment = momentId.uuidString.lowercased()
-        let file = fileId.uuidString.lowercased()
-        return "\(owner)/\(pet)/\(moment)/\(file).jpg"
+        _ = petId
+        return "\(text(ownerId))/moments/\(text(momentId))/\(text(fileId)).jpg"
     }
 
-    static func belongsToOwner(_ path: String, ownerId: UUID) -> Bool {
-        let owner = ownerId.uuidString.lowercased()
-        return MediaPath.isObjectPath(path) && path.hasPrefix(owner + "/")
+    static func isProfilePhoto(_ path: String, ownerId: UUID, petId: UUID) -> Bool {
+        guard let parts = parts(in: path), parts.count == 5 else { return false }
+        return parts[0] == text(ownerId)
+            && parts[1] == "pets"
+            && parts[2] == text(petId)
+            && parts[3] == "profile"
+            && isJPEGFile(parts[4])
     }
 
     static func isMomentPhoto(_ path: String, ownerId: UUID, petId: UUID, momentId: UUID) -> Bool {
-        let prefix = "\(ownerId.uuidString.lowercased())/\(petId.uuidString.lowercased())/\(momentId.uuidString.lowercased())/"
-        guard belongsToOwner(path, ownerId: ownerId), path.hasPrefix(prefix), path.hasSuffix(".jpg") else {
+        _ = petId
+        guard let parts = parts(in: path), parts.count == 4 else { return false }
+        return parts[0] == text(ownerId)
+            && parts[1] == "moments"
+            && parts[2] == text(momentId)
+            && isJPEGFile(parts[3])
+    }
+
+    /// True only for a canonical profile or moment key owned by this account.
+    static func belongsToOwner(_ path: String, ownerId: UUID) -> Bool {
+        guard let parts = parts(in: path), parts[0] == text(ownerId) else { return false }
+        switch parts.count {
+        case 5:
+            return parts[1] == "pets" && isUUID(parts[2]) && parts[3] == "profile" && isJPEGFile(parts[4])
+        case 4:
+            return parts[1] == "moments" && isUUID(parts[2]) && isJPEGFile(parts[3])
+        default:
             return false
         }
-        let file = path.dropFirst(prefix.count)
-        return !file.isEmpty && !file.contains("/")
+    }
+
+    static func isCanonical(_ path: String) -> Bool {
+        guard let owner = ownerId(in: path) else { return false }
+        return belongsToOwner(path, ownerId: owner)
+    }
+
+    static func ownerId(in path: String) -> UUID? {
+        guard let first = parts(in: path)?.first else { return nil }
+        return UUID(uuidString: first)
+    }
+
+    /// A Storage public-object URL. Signed URLs use `/object/sign/` and are not matched.
+    static func isPublicObjectURL(_ value: String) -> Bool {
+        value.contains("/object/public/")
+    }
+
+    private static func parts(in path: String) -> [String]? {
+        guard MediaPath.isObjectPath(path) else { return nil }
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard !parts.contains(where: \.isEmpty) else { return nil }
+        return parts
+    }
+
+    private static func isJPEGFile(_ value: String) -> Bool {
+        guard value.hasSuffix(".jpg") else { return false }
+        return isUUID(String(value.dropLast(4)))
+    }
+
+    private static func isUUID(_ value: String) -> Bool {
+        guard let parsed = UUID(uuidString: value) else { return false }
+        return parsed.uuidString.lowercased() == value
+    }
+
+    private static func text(_ id: UUID) -> String {
+        id.uuidString.lowercased()
     }
 }
 

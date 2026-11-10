@@ -19,7 +19,7 @@ enum MemoryField: String, Hashable, Sendable {
 }
 
 enum PetValidation {
-    /// Personality is stored in the existing bio column.
+    /// Personality is stored in companion_pets.personality. The Swift model still calls that field bio.
     static let personalityLimit = 200
 
     static func errors(

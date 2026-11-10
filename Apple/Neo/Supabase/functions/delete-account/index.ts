@@ -5,162 +5,112 @@
 // The iOS app never receives it. The caller must present their own user JWT.
 //
 // Order:
-// 1. Verify the JWT and require { "confirm": true }.
-// 2. Delete storage objects under the owner's prefix. Stop if this fails.
+// 1. Verify the JWT, require { "confirm": true }, and check the password
+//    with the Auth server. A client flag is not sufficient.
+// 2. Delete canonical storage objects under the owner's prefix. Stop if this fails.
 // 3. Delete companion rows owned by that user. Stop if this fails.
 // 4. Delete the Auth user only after storage and rows are gone.
 // Each step is safe to repeat, so a failed run can be resumed.
+// Object removal uses the same path checks as delete-moment and delete-pet.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const bucket = "companion-pet-media";
+import {
+  adminClient,
+  bucket,
+  clearQueue,
+  environment,
+  isCanonicalOwned,
+  json,
+  listOwnedObjects,
+  readJson,
+  removeOwnedPaths,
+  requireUser,
+  selectOwnedRows,
+  verifyPassword,
+} from "../_shared/companion_cleanup.ts";
 
 Deno.serve(async (request) => {
-  if (request.method !== "POST") {
-    return json({ status: "rejected" }, 405);
-  }
+  if (request.method !== "POST") return json({ status: "rejected" }, 405);
+  const env = environment();
+  if (!env) return json({ status: "incomplete", stage: "configuration" }, 500);
+  const auth = await requireUser(request, env);
+  if (auth.error) return auth.error;
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-    return json({ status: "incomplete", stage: "configuration" }, 500);
-  }
-
-  const authorization = request.headers.get("Authorization");
-  if (!authorization) {
-    return json({ status: "rejected" }, 401);
-  }
-
-  let body = {};
-  try {
-    body = await request.json();
-  } catch {
-    body = {};
-  }
-  if (body.confirm !== true) {
+  const body = await readJson(request);
+  if (body.confirm !== true || body.ownerId !== undefined || typeof body.password !== "string") {
     return json({ status: "rejected" }, 400);
   }
+  const passwordMatches = await verifyPassword(env, auth.email, body.password, auth.userId);
+  if (!passwordMatches) return json({ status: "rejected" }, 401);
 
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authorization } },
-    auth: { persistSession: false },
-  });
-  const { data: userData, error: userError } = await userClient.auth.getUser();
-  if (userError || !userData.user) {
-    return json({ status: "rejected" }, 401);
-  }
-
-  const ownerId = userData.user.id;
-  const admin = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false },
-  });
-
+  const ownerId = auth.userId;
+  const admin = adminClient(env);
   await admin.from("companion_account_deletions").upsert({
     owner_id: ownerId,
     stage: "storage",
     updated_at: new Date().toISOString(),
   });
 
-  const removed = await removeOwnedObjects(admin, ownerId);
-  if (!removed) {
-    return json({ status: "incomplete", stage: "storage" }, 409);
-  }
+  const removed = await removeAccountObjects(admin, ownerId);
+  if (!removed) return json({ status: "incomplete", stage: "storage" }, 409);
 
   await admin.from("companion_account_deletions").upsert({
     owner_id: ownerId,
     stage: "records",
     updated_at: new Date().toISOString(),
   });
-
   const records = await removeOwnedRecords(admin, ownerId);
-  if (!records) {
-    return json({ status: "incomplete", stage: "records" }, 409);
-  }
+  if (!records) return json({ status: "incomplete", stage: "records" }, 409);
 
   await admin.from("companion_account_deletions").upsert({
     owner_id: ownerId,
     stage: "auth",
     updated_at: new Date().toISOString(),
   });
-
   const { error: deleteUserError } = await admin.auth.admin.deleteUser(ownerId);
-  if (deleteUserError) {
-    return json({ status: "incomplete", stage: "auth" }, 409);
-  }
+  if (deleteUserError) return json({ status: "incomplete", stage: "auth" }, 409);
 
   await admin.from("companion_account_deletions").upsert({
     owner_id: ownerId,
     stage: "deleted",
     updated_at: new Date().toISOString(),
   });
-
   return json({ status: "deleted" }, 200);
 });
 
-async function removeOwnedObjects(admin, ownerId) {
-  const prefix = `${ownerId}`;
-  let offset = 0;
-  const pageSize = 100;
-  for (;;) {
-    const { data, error } = await admin.storage.from(bucket).list(prefix, {
-      limit: pageSize,
-      offset,
-    });
-    if (error) return false;
-    if (!data || data.length === 0) return true;
-
-    const files = [];
-    for (const entry of data) {
-      if (entry.id) {
-        files.push(`${prefix}/${entry.name}`);
-      } else {
-        const nested = await removeFolder(admin, `${prefix}/${entry.name}`);
-        if (!nested) return false;
-      }
-    }
-    if (files.length > 0) {
-      const { error: removeError } = await admin.storage.from(bucket).remove(files);
-      if (removeError) return false;
-    }
-    if (data.length < pageSize) return true;
-    offset += data.length;
+async function removeAccountObjects(admin, ownerId) {
+  let listed = [];
+  try {
+    listed = await listOwnedObjects(admin, ownerId);
+  } catch {
+    return false;
   }
-}
-
-async function removeFolder(admin, folder) {
-  const { data, error } = await admin.storage.from(bucket).list(folder, { limit: 100 });
-  if (error) return false;
-  if (!data || data.length === 0) return true;
-  const files = [];
-  for (const entry of data) {
-    const path = `${folder}/${entry.name}`;
-    if (entry.id) {
-      files.push(path);
-    } else {
-      const nested = await removeFolder(admin, path);
-      if (!nested) return false;
-    }
-  }
-  if (files.length === 0) return true;
-  const { error: removeError } = await admin.storage.from(bucket).remove(files);
-  return !removeError;
+  const queued = await selectOwnedRows(admin, "companion_storage_cleanup", ownerId, "object_path");
+  if (queued.error) return false;
+  const jobs = await selectOwnedRows(admin, "companion_deletion_jobs", ownerId, "object_paths");
+  if (jobs.error) return false;
+  const jobPaths = (jobs.data ?? []).flatMap((row) => row.object_paths ?? []);
+  const paths = [...listed, ...(queued.data ?? []).map((row) => row.object_path), ...jobPaths]
+    .filter((path) => isCanonicalOwned(path, ownerId));
+  const removed = await removeOwnedPaths(admin, ownerId, paths);
+  if (!removed.ok) return false;
+  const cleared = await clearQueue(
+    admin,
+    ownerId,
+    (queued.data ?? []).map((row) => row.object_path).filter((path) => isCanonicalOwned(path, ownerId)),
+  );
+  if (!cleared) return false;
+  const { data, error: listError } = await admin.storage.from(bucket).list(ownerId, { limit: 1 });
+  if (listError) return false;
+  return !data || data.length === 0;
 }
 
 async function removeOwnedRecords(admin, ownerId) {
-  const pets = await admin.from("companion_pets").delete().eq("owner_id", ownerId);
-  if (pets.error) return false;
-  const moments = await admin.from("companion_moments").delete().eq("owner_id", ownerId);
-  if (moments.error) return false;
+  const jobs = await admin.from("companion_deletion_jobs").delete().eq("owner_id", ownerId);
+  if (jobs.error) return false;
   const media = await admin.from("companion_moment_media").delete().eq("owner_id", ownerId);
   if (media.error) return false;
-  const memories = await admin.from("companion_memories").delete().eq("owner_id", ownerId);
-  return !memories.error;
-}
-
-function json(body, status) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+  const moments = await admin.from("companion_moments").delete().eq("owner_id", ownerId);
+  if (moments.error) return false;
+  const pets = await admin.from("companion_pets").delete().eq("owner_id", ownerId);
+  return !pets.error;
 }

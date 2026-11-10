@@ -47,6 +47,8 @@ final class EditPetProfileViewModel {
     private let uploader: any MediaUploading
     private let media: any MediaURLResolving
     private let library: PetLibrary
+    private let storageCleanup: (any StorageCleaning)?
+    private var pendingPhotoRemoval: [String] = []
 
     var name = ""
     var species: Species?
@@ -96,7 +98,8 @@ final class EditPetProfileViewModel {
         pets: any PetRepository,
         uploader: any MediaUploading,
         media: any MediaURLResolving,
-        library: PetLibrary
+        library: PetLibrary,
+        storageCleanup: (any StorageCleaning)? = nil
     ) {
         self.ownerId = ownerId
         self.petId = pet?.id ?? UUID()
@@ -104,6 +107,7 @@ final class EditPetProfileViewModel {
         self.uploader = uploader
         self.media = media
         self.library = library
+        self.storageCleanup = storageCleanup
         if let pet {
             apply(pet)
         }
@@ -156,14 +160,21 @@ final class EditPetProfileViewModel {
         isSaving = true
         defer { isSaving = false }
 
+        let previousPhotoPath = existingPhotoPath
         let photoPath: String?
+        var uploadedNow: String?
         if let photoJPEG {
             guard !photoJPEG.isEmpty else {
                 photoError = ProfilePhotoValidation.Issue.unsupportedType.message
                 return
             }
             do {
-                photoPath = try await uploader.uploadJPEG(photoJPEG, ownerId: ownerId, petId: petId)
+                let uploaded = try await uploader.uploadJPEG(photoJPEG, ownerId: ownerId, petId: petId)
+                guard MediaObjectPath.isProfilePhoto(uploaded, ownerId: ownerId, petId: petId) else {
+                    throw RepositoryError.invalidPhoto
+                }
+                photoPath = uploaded
+                uploadedNow = uploaded
             } catch {
                 serverError = error.localizedDescription
                 return
@@ -178,11 +189,44 @@ final class EditPetProfileViewModel {
             apply(saved)
             photoJPEG = nil
             captureBaseline()
-            serverError = nil
-            didSave = true
+            if let uploadedNow, uploadedNow == saved.photoPath, let previousPhotoPath, previousPhotoPath != uploadedNow {
+                pendingPhotoRemoval.append(previousPhotoPath)
+            }
+            if let uploadedNow, saved.photoPath != uploadedNow {
+                pendingPhotoRemoval.append(uploadedNow)
+            }
+            let failed = await finishPhotoCleanup()
+            if failed.isEmpty {
+                serverError = nil
+                didSave = true
+            } else {
+                serverError = "The profile is saved. A previous photo could not be removed. Save again to retry."
+                didSave = false
+            }
         } catch {
+            if let uploadedNow {
+                pendingPhotoRemoval.append(uploadedNow)
+                _ = await finishPhotoCleanup()
+            }
             serverError = error.localizedDescription
         }
+    }
+
+    private func finishPhotoCleanup() async -> [String] {
+        let unique = Array(Set(pendingPhotoRemoval)).filter { $0 != existingPhotoPath }
+        let failed = await OwnedObjectCleanup.removeReportingFailures(unique, ownerId: ownerId, uploader: uploader)
+        if failed.isEmpty {
+            pendingPhotoRemoval = []
+            if let storageCleanup, !unique.isEmpty {
+                try? await storageCleanup.cleanupOwnedStorage(paths: unique)
+            }
+            return []
+        }
+        pendingPhotoRemoval = failed
+        if let storageCleanup {
+            try? await storageCleanup.cleanupOwnedStorage(paths: failed)
+        }
+        return failed
     }
 
     private func loadPhoto() async {

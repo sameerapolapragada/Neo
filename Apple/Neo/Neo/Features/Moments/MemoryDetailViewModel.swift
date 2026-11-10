@@ -20,7 +20,7 @@ final class MemoryDetailViewModel {
     private let pets: any PetRepository
     private let moments: any MomentRepository
     private let media: any MediaURLResolving
-    private let deletion: MomentDeletionService
+    private let deletion: any MomentDeleting
     private let board: MomentBoard?
     private var appliedDeltaID = 0
 
@@ -33,6 +33,7 @@ final class MemoryDetailViewModel {
     private(set) var isDeleting = false
     private(set) var isConfirmingDelete = false
     private(set) var didDelete = false
+    private(set) var deleteFailed = false
     private(set) var shareImage: UIImage?
     private(set) var presentation: MemoryDetailPresentation = .loading
     var loadError: String?
@@ -48,6 +49,7 @@ final class MemoryDetailViewModel {
         moments: any MomentRepository,
         media: any MediaURLResolving,
         uploader: any MediaUploading,
+        deletion: (any MomentDeleting)? = nil,
         board: MomentBoard? = nil
     ) {
         self.momentId = momentId
@@ -55,7 +57,7 @@ final class MemoryDetailViewModel {
         self.pets = pets
         self.moments = moments
         self.media = media
-        self.deletion = MomentDeletionService(pets: pets, moments: moments, uploader: uploader)
+        self.deletion = deletion ?? MomentDeletionService(pets: pets, moments: moments, uploader: uploader)
         self.board = board
     }
 
@@ -139,6 +141,7 @@ final class MemoryDetailViewModel {
             board?.noteSaved(saved)
             apply(saved)
             actionError = nil
+            deleteFailed = false
         } catch {
             actionError = error.localizedDescription
         }
@@ -192,9 +195,11 @@ final class MemoryDetailViewModel {
             try await deletion.delete(momentId: momentId, petId: pet.id, ownerId: pet.ownerId)
             board?.noteDeleted(id: momentId, petId: pet.id, ownerId: pet.ownerId)
             didDelete = true
+            deleteFailed = false
             actionError = nil
         } catch {
             actionError = error.localizedDescription
+            deleteFailed = true
             didDelete = false
         }
     }

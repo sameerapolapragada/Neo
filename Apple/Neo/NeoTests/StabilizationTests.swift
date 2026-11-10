@@ -225,14 +225,18 @@ final class StabilizationTests: XCTestCase {
         XCTAssertNil(app.library)
         let stored = await TimelineThumbnailCache.shared.storedCount()
         XCTAssertEqual(stored, 0)
-        _ = await cache.displayURL(for: path)
-        XCTAssertEqual(signer.calls, 2)
+        let afterSignOut = await cache.displayURL(for: path)
+        XCTAssertNil(afterSignOut)
+        XCTAssertEqual(signer.calls, 1)
 
         let restarted = try makeApp(owner: owner, auth: auth, media: cache)
         await restarted.bootstrap()
         XCTAssertEqual(restarted.gate, .ready)
         XCTAssertEqual(restarted.ownerId, owner)
         XCTAssertFalse(restarted.remoteSessionRevoked)
+        let restored = await cache.displayURL(for: path)
+        XCTAssertNotNil(restored)
+        XCTAssertEqual(signer.calls, 2)
     }
 
     func testSuccessfulSignOutStaysSignedOutAfterRestart() async throws {
@@ -546,9 +550,10 @@ private final class ScriptedAccountDeletion: AccountDeleting, @unchecked Sendabl
     var error: Error?
     private(set) var calls = 0
 
-    func deleteAuthenticatedAccount() async throws {
+    func deleteAuthenticatedAccount(password: String) async throws {
         calls += 1
         if let error { throw error }
+        _ = password
     }
 }
 

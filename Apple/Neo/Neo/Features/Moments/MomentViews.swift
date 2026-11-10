@@ -413,6 +413,7 @@ struct CreatePetMomentView: View {
                 pets: editing.pets,
                 moments: editing.moments,
                 uploader: editing.uploader,
+                storageCleanup: editing.storageCleanup,
                 board: board
             )
         } else {
@@ -422,6 +423,7 @@ struct CreatePetMomentView: View {
                 pets: editing.pets,
                 moments: editing.moments,
                 uploader: editing.uploader,
+                storageCleanup: editing.storageCleanup,
                 board: board
             )
         }

@@ -26,6 +26,12 @@ struct AccountSettingsView: View {
 
             InlineErrorText(message: errorMessage)
 
+            if isDeleting {
+                ProgressView("Deleting account")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("deletingAccount")
+            }
+
             Button("Delete Account") {
                 errorMessage = nil
                 if password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

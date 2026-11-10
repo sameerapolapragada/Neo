@@ -16,10 +16,14 @@ final class PetProfileViewModel {
     private let media: any MediaURLResolving
     private let pets: any PetRepository
     private let board: MomentBoard
+    private let petDeletion: (any PetDeleting)?
 
     private(set) var state: ProfileScreenState = .loading
     private(set) var photoURL: URL?
+    private(set) var isDeleting = false
+    private(set) var isConfirmingDelete = false
     var statsError: String?
+    var deleteError: String?
 
     var momentCount: Int { board.momentCount }
     /// Moments on this pet whose category is Milestone.
@@ -30,13 +34,15 @@ final class PetProfileViewModel {
         moments: any MomentRepository,
         media: any MediaURLResolving,
         pets: any PetRepository,
-        board: MomentBoard
+        board: MomentBoard,
+        petDeletion: (any PetDeleting)? = nil
     ) {
         self.library = library
         self.moments = moments
         self.media = media
         self.pets = pets
         self.board = board
+        self.petDeletion = petDeletion
     }
 
     var selectedPet: Pet? { library.activePet }
@@ -81,6 +87,40 @@ final class PetProfileViewModel {
         } catch {
             guard library.activePet?.id == pet.id else { return }
             statsError = error.localizedDescription
+        }
+    }
+
+    func requestDelete() {
+        guard library.activePet != nil, !isDeleting else { return }
+        isConfirmingDelete = true
+    }
+
+    func cancelDelete() {
+        isConfirmingDelete = false
+    }
+
+    func performDelete() async {
+        guard let pet = library.activePet, !isDeleting else { return }
+        isConfirmingDelete = false
+        isDeleting = true
+        defer { isDeleting = false }
+        guard let petDeletion else {
+            deleteError = CompanionDeletionError.unavailable.localizedDescription
+            return
+        }
+        do {
+            try await petDeletion.delete(petId: pet.id, ownerId: pet.ownerId)
+            library.noteDeleted(pet.id)
+            board.activate(petId: library.activePet?.id, ownerId: library.activePet?.ownerId)
+            deleteError = nil
+            if library.activePet == nil {
+                photoURL = nil
+                state = library.pets.isEmpty ? .empty : .loaded
+            } else {
+                await loadDetails()
+            }
+        } catch {
+            deleteError = error.localizedDescription
         }
     }
 

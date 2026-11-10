@@ -15,12 +15,17 @@ enum SupabaseDates {
         return formatter.string(from: date)
     }
 
-    static func parseDay(_ value: String?) -> Date? {
+    /// Calendar day for `companion_moments.moment_date`. Uses the device calendar so the stored date matches the day the person picked.
+    static func calendarDay(_ date: Date, calendar: Calendar = .current) -> String {
+        dayString(date, calendar: calendar) ?? "1970-01-01"
+    }
+
+    static func parseDay(_ value: String?, calendar: Calendar = utcCalendar) -> Date? {
         guard let value, !value.isEmpty else { return nil }
         let formatter = DateFormatter()
-        formatter.calendar = utcCalendar
+        formatter.calendar = calendar
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: String(value.prefix(10)))
     }

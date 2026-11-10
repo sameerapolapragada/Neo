@@ -18,9 +18,22 @@ actor InMemoryPetRepository: PetRepository {
     }
 
     func upsert(_ pet: Pet) async throws -> Pet {
+        if let existing = storage[pet.id], existing.ownerId != pet.ownerId {
+            throw RepositoryError.notFound
+        }
         try MediaPathGuard.validate(pet.photoPath)
+        if let photoPath = pet.photoPath, !MediaObjectPath.isProfilePhoto(photoPath, ownerId: pet.ownerId, petId: pet.id) {
+            throw RepositoryError.invalidPhoto
+        }
         storage[pet.id] = pet
         return pet
+    }
+
+    func deleteOwned(id: UUID, ownerId: UUID) async throws {
+        guard let pet = storage[id], pet.ownerId == ownerId else {
+            throw RepositoryError.notFound
+        }
+        storage.removeValue(forKey: id)
     }
 }
 
@@ -54,12 +67,20 @@ actor InMemoryMomentRepository: MomentRepository {
     }
 
     func upsert(_ moment: PetMoment) async throws -> PetMoment {
+        if let existing = storage[moment.id], existing.ownerId != moment.ownerId {
+            throw RepositoryError.notFound
+        }
         for item in moment.media {
             guard item.momentId == moment.id, item.ownerId == moment.ownerId else {
                 throw RepositoryError.invalidPhoto
             }
             try MediaPathGuard.validate(item.storagePath)
-            guard MediaObjectPath.belongsToOwner(item.storagePath, ownerId: moment.ownerId) else {
+            guard MediaObjectPath.isMomentPhoto(
+                item.storagePath,
+                ownerId: moment.ownerId,
+                petId: moment.petId,
+                momentId: moment.id
+            ) else {
                 throw RepositoryError.invalidPhoto
             }
         }
@@ -147,11 +168,15 @@ actor InMemoryMediaStore: MediaUploading, MediaSigning {
     }
 
     func signedURL(for path: String, expiresIn: Int) async throws -> URL {
-        guard MediaPath.isObjectPath(path), files[path] != nil else {
+        guard MediaObjectPath.isCanonical(path), !MediaObjectPath.isPublicObjectURL(path) else {
+            throw RepositoryError.invalidPhoto
+        }
+        guard files[path] != nil else {
             throw RepositoryError.notFound
         }
-        guard let url = URL(string: "https://signed.test/\(expiresIn)/\(path)") else {
-            throw RepositoryError.remote
+        guard let url = URL(string: "https://signed.test/\(expiresIn)/\(path)"),
+              !MediaObjectPath.isPublicObjectURL(url.absoluteString) else {
+            throw RepositoryError.invalidPhoto
         }
         return url
     }

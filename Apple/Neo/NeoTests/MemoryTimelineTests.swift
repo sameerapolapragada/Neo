@@ -184,13 +184,15 @@ final class MemoryTimelineTests: XCTestCase {
         let repository = InMemoryMomentRepository()
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-        let cover = "\(owner.uuidString.lowercased())/\(petId.uuidString.lowercased())/cover.jpg"
-        let extra = "\(owner.uuidString.lowercased())/\(petId.uuidString.lowercased())/extra.jpg"
+        let coverId = UUID(uuidString: "00000000-0000-0000-0000-0000000000c1")!
+        let extraId = UUID(uuidString: "00000000-0000-0000-0000-0000000000e1")!
         let dates = (0..<5).map { index in
             calendar.date(from: DateComponents(year: index < 3 ? 2026 : 2025, month: 5, day: 10 + index, hour: 12))!
         }
         for (index, date) in dates.enumerated() {
             let momentId = UUID()
+            let cover = MediaObjectPath.momentJPEG(ownerId: owner, petId: petId, momentId: momentId, fileId: coverId)
+            let extra = MediaObjectPath.momentJPEG(ownerId: owner, petId: petId, momentId: momentId, fileId: extraId)
             let media = [
                 MomentMedia(id: UUID(), momentId: momentId, ownerId: owner, storagePath: extra, sortOrder: 1, contentType: "image/jpeg", byteCount: nil, width: nil, height: nil),
                 MomentMedia(id: UUID(), momentId: momentId, ownerId: owner, storagePath: cover, sortOrder: 0, contentType: "image/jpeg", byteCount: nil, width: nil, height: nil)
@@ -229,8 +231,11 @@ final class MemoryTimelineTests: XCTestCase {
         XCTAssertFalse(model.canLoadMore)
         XCTAssertFalse(model.isLoadingMore)
         let requested = await resolver.requestedPaths()
-        XCTAssertEqual(requested, Array(repeating: cover, count: 5))
-        XCTAssertFalse(requested.contains(extra))
+        let coverSuffix = "\(coverId.uuidString.lowercased()).jpg"
+        let extraSuffix = "\(extraId.uuidString.lowercased()).jpg"
+        XCTAssertEqual(requested.count, 5)
+        XCTAssertTrue(requested.allSatisfy { $0.hasSuffix(coverSuffix) })
+        XCTAssertFalse(requested.contains { $0.hasSuffix(extraSuffix) })
     }
 
     func testThumbnailDoesNotKeepFullResolution() throws {

@@ -6,4 +6,7 @@ struct ProfileEditingDependencies: Sendable {
     let media: any MediaURLResolving
     let moments: any MomentRepository
     let memories: any MemoryRepository
+    var momentDeletion: (any MomentDeleting)? = nil
+    var petDeletion: (any PetDeleting)? = nil
+    var storageCleanup: (any StorageCleaning)? = nil
 }
