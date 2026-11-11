@@ -104,15 +104,32 @@ enum MemoryValidation {
 }
 
 enum AuthFormValidation {
-    static func error(email: String, password: String) -> String? {
+    static func emailError(_ email: String) -> String? {
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
         let parts = trimmed.split(separator: "@", omittingEmptySubsequences: false)
         let domain = parts.count == 2 ? String(parts[1]) : ""
         if parts.count != 2 || parts[0].isEmpty || !domain.contains(".") || domain.hasPrefix(".") || domain.hasSuffix(".") {
             return "Enter a valid email address."
         }
+        return nil
+    }
+
+    static func error(email: String, password: String) -> String? {
+        if let emailError = emailError(email) {
+            return emailError
+        }
+        return passwordChoiceError(password, confirmation: password)
+    }
+
+    static func passwordChoiceError(_ password: String, confirmation: String) -> String? {
         if password.count < 8 {
             return "Use at least 8 characters for the password."
+        }
+        if password.count > 1024 {
+            return "Use a shorter password."
+        }
+        if password != confirmation {
+            return "Those passwords don't match."
         }
         return nil
     }

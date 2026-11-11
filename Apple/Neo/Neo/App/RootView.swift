@@ -22,6 +22,8 @@ struct RootView: View {
                 )
             case .signedOut, .confirmEmail:
                 SignInView(viewModel: signIn, app: app)
+            case .chooseNewPassword:
+                ResetPasswordView(app: app)
             case .ready:
                 if let library = app.library, let dependencies = app.dependencies {
                     MainTabView(app: app, library: library, dependencies: dependencies)

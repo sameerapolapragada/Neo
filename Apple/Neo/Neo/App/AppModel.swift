@@ -78,6 +78,7 @@ final class AppModel {
         case rejectedServiceRole
         case signedOut
         case confirmEmail
+        case chooseNewPassword
         case ready
     }
 
@@ -86,6 +87,7 @@ final class AppModel {
     private(set) var ownerId: UUID?
     private(set) var library: PetLibrary?
     var authError: String?
+    private var handledAuthURLs: Set<String> = []
     /// True only when the auth server accepted sign-out. Local cleanup does not set this.
     private(set) var remoteSessionRevoked = false
 
@@ -117,7 +119,12 @@ final class AppModel {
         }
         do {
             if let ownerId = try await dependencies.auth.restoreSession() {
-                await enter(ownerId: ownerId)
+                if UserDefaults.standard.bool(forKey: AuthCallback.pendingRecoveryKey) {
+                    self.ownerId = ownerId
+                    gate = .chooseNewPassword
+                } else {
+                    await enter(ownerId: ownerId)
+                }
             } else if gate != .ready {
                 gate = .signedOut
             }
@@ -138,16 +145,72 @@ final class AppModel {
                 if result.needsEmailConfirmation {
                     gate = .confirmEmail
                 } else if let ownerId = result.ownerId {
+                    UserDefaults.standard.set(false, forKey: AuthCallback.pendingRecoveryKey)
                     await enter(ownerId: ownerId)
                 } else {
                     gate = .confirmEmail
                 }
             } else {
                 let ownerId = try await dependencies.auth.signIn(email: email, password: password)
+                UserDefaults.standard.set(false, forKey: AuthCallback.pendingRecoveryKey)
                 await enter(ownerId: ownerId)
             }
         } catch {
             authError = AuthErrorMessage.message(for: error, creatingAccount: creatingAccount)
+        }
+    }
+
+    func sendPasswordReset(email: String) async -> Bool {
+        guard let dependencies else { return false }
+        authError = nil
+        do {
+            try await dependencies.auth.sendPasswordReset(email: email)
+            UserDefaults.standard.set(true, forKey: AuthCallback.pendingRecoveryKey)
+            return true
+        } catch {
+            authError = AuthErrorMessage.recoveryMessage(for: error)
+            return false
+        }
+    }
+
+    func handleAuthURL(_ url: URL) async {
+        guard let dependencies else { return }
+        guard AuthCallback.matches(url) else { return }
+        guard handledAuthURLs.insert(url.absoluteString).inserted else { return }
+        let recovery = AuthCallback.isRecovery(url)
+            || UserDefaults.standard.bool(forKey: AuthCallback.pendingRecoveryKey)
+        if recovery {
+            UserDefaults.standard.set(true, forKey: AuthCallback.pendingRecoveryKey)
+        }
+        do {
+            let ownerId = try await dependencies.auth.completeAuthCallback(url)
+            authError = nil
+            if recovery {
+                self.ownerId = ownerId
+                gate = .chooseNewPassword
+            } else {
+                await enter(ownerId: ownerId)
+            }
+        } catch {
+            handledAuthURLs.remove(url.absoluteString)
+            authError = AuthErrorMessage.expiredLink
+            if gate != .ready {
+                gate = .signedOut
+            }
+        }
+    }
+
+    func saveNewPassword(_ password: String) async -> Bool {
+        guard let dependencies else { return false }
+        authError = nil
+        do {
+            let ownerId = try await dependencies.auth.updatePassword(password)
+            UserDefaults.standard.set(false, forKey: AuthCallback.pendingRecoveryKey)
+            await enter(ownerId: ownerId)
+            return true
+        } catch {
+            authError = "We couldn't save that password. Request a new reset link and try again."
+            return false
         }
     }
 

@@ -1,0 +1,22 @@
+{
+  "cli": {
+    "version": ">= 16.32.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "production": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "environment": "production",
+      "env": {
+        "SUPABASE_URL": "https://hsfbuaefataujdzglexm.supabase.co"
+      },
+      "ios": {
+        "image": "macos-tahoe-26.5-xcode-26.6",
+        "scheme": "Neo",
+        "buildConfiguration": "Release",
+        "config": ".eas/build/ios-production.yml"
+      }
+    }
+  }
+}

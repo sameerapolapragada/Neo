@@ -1,0 +1,8 @@
+{
+  "name": "neo-petcompanion",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "eas-build-post-install": "bash scripts/prepare-eas-ios.sh"
+  }
+}

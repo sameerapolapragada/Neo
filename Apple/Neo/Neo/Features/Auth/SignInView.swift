@@ -10,6 +10,8 @@ final class SignInViewModel {
     var errorMessage: String?
     var infoMessage: String?
     var isWorking = false
+    var isShowingForgotPassword = false
+    var didSendReset = false
 
     func submit(using app: AppModel) async {
         errorMessage = nil
@@ -23,7 +25,25 @@ final class SignInViewModel {
         await app.submitAuth(email: email, password: password, creatingAccount: isCreatingAccount)
         errorMessage = app.authError
         if app.gate == .confirmEmail {
-            infoMessage = "Check your email to confirm the account, then sign in."
+            infoMessage = "Check your email and open the link on this iPhone. It returns to Neo."
+        }
+    }
+
+    func sendReset(using app: AppModel) async {
+        errorMessage = nil
+        infoMessage = nil
+        if let validation = AuthFormValidation.emailError(email) {
+            errorMessage = validation
+            return
+        }
+        guard !isWorking else { return }
+        isWorking = true
+        defer { isWorking = false }
+        if await app.sendPasswordReset(email: email) {
+            didSendReset = true
+            infoMessage = "If an account exists for that email, we sent a link. Open it on this iPhone. It returns to Neo so you can choose a new password."
+        } else {
+            errorMessage = app.authError
         }
     }
 }
@@ -33,6 +53,14 @@ struct SignInView: View {
     var app: AppModel
 
     var body: some View {
+        if viewModel.isShowingForgotPassword {
+            ForgotPasswordView(viewModel: viewModel, app: app)
+        } else {
+            credentials
+        }
+    }
+
+    private var credentials: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: NeoSpacing.sm) {
                 Text("Neo")
@@ -73,6 +101,17 @@ struct SignInView: View {
                 viewModel.infoMessage = nil
             }
             .buttonStyle(NeoQuietButtonStyle())
+
+            if !viewModel.isCreatingAccount {
+                Button("Forgot password?") {
+                    viewModel.errorMessage = nil
+                    viewModel.infoMessage = nil
+                    app.authError = nil
+                    viewModel.didSendReset = false
+                    viewModel.isShowingForgotPassword = true
+                }
+                .buttonStyle(NeoQuietButtonStyle())
+            }
         }
     }
 }

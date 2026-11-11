@@ -9,12 +9,27 @@ protocol AuthServicing: Sendable {
     func restoreSession() async throws -> UUID?
     func signIn(email: String, password: String) async throws -> UUID
     func signUp(email: String, password: String) async throws -> SignUpResult
+    func sendPasswordReset(email: String) async throws
+    func completeAuthCallback(_ url: URL) async throws -> UUID
+    func updatePassword(_ password: String) async throws -> UUID
     func signOut() async throws
     func currentEmail() async -> String?
 }
 
 extension AuthServicing {
     func currentEmail() async -> String? { nil }
+
+    func sendPasswordReset(email: String) async throws {
+        throw RepositoryError.remote
+    }
+
+    func completeAuthCallback(_ url: URL) async throws -> UUID {
+        throw RepositoryError.remote
+    }
+
+    func updatePassword(_ password: String) async throws -> UUID {
+        throw RepositoryError.remote
+    }
 }
 
 protocol PetRepository: Sendable {

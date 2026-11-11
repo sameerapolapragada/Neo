@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Neo",
+    "slug": "neo-petcompanion",
+    "version": "1.0",
+    "orientation": "portrait",
+    "ios": {
+      "bundleIdentifier": "com.neo.petcompanion",
+      "supportsTablet": false
+    },
+    "extra": {
+      "eas": {
+        "projectId": "bd963872-8ae6-481c-9d04-363991fd6e4a"
+      }
+    },
+    "owner": "saisameera27"
+  }
+}

@@ -8,6 +8,9 @@ struct NeoApp: App {
         WindowGroup {
             RootView(app: appModel)
                 .tint(NeoColor.espresso)
+                .onOpenURL { url in
+                    Task { await appModel.handleAuthURL(url) }
+                }
         }
     }
 }

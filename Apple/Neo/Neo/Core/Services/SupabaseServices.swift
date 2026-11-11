@@ -21,7 +21,8 @@ struct SupabaseAuthService: AuthServicing {
     func signUp(email: String, password: String) async throws -> SignUpResult {
         let response = try await client.auth.signUp(
             email: email.trimmingCharacters(in: .whitespacesAndNewlines),
-            password: password
+            password: password,
+            redirectTo: AuthCallback.url
         )
         switch response {
         case .session(let session):
@@ -29,6 +30,23 @@ struct SupabaseAuthService: AuthServicing {
         case .user:
             return SignUpResult(ownerId: nil, needsEmailConfirmation: true)
         }
+    }
+
+    func sendPasswordReset(email: String) async throws {
+        try await client.auth.resetPasswordForEmail(
+            email.trimmingCharacters(in: .whitespacesAndNewlines),
+            redirectTo: AuthCallback.url
+        )
+    }
+
+    func completeAuthCallback(_ url: URL) async throws -> UUID {
+        let session = try await client.auth.session(from: url)
+        return session.user.id
+    }
+
+    func updatePassword(_ password: String) async throws -> UUID {
+        let user = try await client.auth.update(user: UserAttributes(password: password))
+        return user.id
     }
 
     func signOut() async throws {
