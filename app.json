@@ -10,7 +10,8 @@
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Neo uses your photo library to add pet and memory photos."
+        "NSPhotoLibraryUsageDescription": "Neo uses your photo library to add pet and memory photos.",
+        "NSUserNotificationsUsageDescription": "Neo sends daily reminders to complete your pet's wellness check-in."
       }
     },
     "android": {
@@ -41,6 +42,13 @@
         "expo-image-picker",
         {
           "photosPermission": "Neo uses your photo library to add pet and memory photos."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#7A6E99"
         }
       ],
       "@react-native-community/datetimepicker"

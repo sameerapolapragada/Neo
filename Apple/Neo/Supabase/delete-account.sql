@@ -1,3 +1,6 @@
+-- SUPERSEDED by Apple/Neo/Supabase/migrations/20261105010200_companion_account_deletions.sql.
+-- Do not run this file.
+--
 -- NOT APPLIED. Do not run this against a live or shared project.
 -- Additive only. It does not alter Expo tables (`pets`, `memories`) and it does
 -- not drop companion data. Account deletion itself runs in the Edge Function,

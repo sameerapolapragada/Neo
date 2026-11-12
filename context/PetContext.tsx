@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 
 import { database } from '@/lib/database';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { syncWellnessCheckInReminder } from '@/lib/wellnessReminders';
 import type { FutureSnapshot, Memory, MissingMoments, Pet, WellnessCheckIn, WeightEntry } from '@/types';
 
 interface PetContextValue {
@@ -64,6 +65,14 @@ export function PetProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    void syncWellnessCheckInReminder(pet, wellnessCheckIns);
+  }, [loading, pet, wellnessCheckIns]);
 
   const markRemoteSyncPending = useCallback((pending: boolean) => {
     setRemoteSyncPending(pending);

@@ -1,3 +1,14 @@
+-- SUPERSEDED. Do not run this file.
+-- The versioned Phase 1 migrations live in Apple/Neo/Supabase/migrations/.
+-- This draft is kept for history only. It is not the migration to apply.
+-- Its storage policies only check the first folder. Re-applying them would
+-- weaken the migration, so the statement below stops the script.
+
+do $$
+begin
+  raise exception 'schema.sql is superseded. Apply Apple/Neo/Supabase/migrations instead.';
+end $$;
+--
 -- Neo companion schema for the native iOS app.
 -- NOT APPLIED. Do not run this against the live project without approval.
 -- Table and bucket names are prefixed so this script does not alter the Expo

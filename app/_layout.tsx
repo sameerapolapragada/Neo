@@ -3,12 +3,14 @@ import {
   ComicNeue_700Bold,
 } from '@expo-google-fonts/comic-neue';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+import { Stack, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { PetProvider } from '@/context/PetContext';
+import { configureWellnessNotifications } from '@/lib/wellnessReminders';
 import { setupDefaultFonts } from '@/lib/setupDefaultFonts';
 
 export { ErrorBoundary } from 'expo-router';
@@ -32,6 +34,19 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [loaded]);
+
+  useEffect(() => {
+    configureWellnessNotifications();
+
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const url = response.notification.request.content.data?.url;
+      if (typeof url === 'string') {
+        router.push(url as '/(tabs)/moments');
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   if (!loaded) {
     return null;

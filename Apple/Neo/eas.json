@@ -15,7 +15,7 @@
         "image": "macos-tahoe-26.5-xcode-26.6",
         "scheme": "Neo",
         "buildConfiguration": "Release",
-        "config": ".eas/build/ios-production.yml"
+        "config": "ios-production.yml"
       }
     }
   }

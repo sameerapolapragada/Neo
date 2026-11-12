@@ -2,4 +2,6 @@ xcuserdata/
 DerivedData/
 *.xcuserstate
 Config/Secrets.xcconfig
-ios/
+ios/Pods/
+ios/build/
+ios/Gymfile

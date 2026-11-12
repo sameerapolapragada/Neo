@@ -1,6 +1,6 @@
 # Companion database architecture
 
-Phase 1 schema for the native iOS app. The first three migrations are on the hosted Neo project. The deletion-guard migration is local until it is reviewed and applied.
+Phase 1 schema for the native iOS app. All four companion migrations, including the deletion guards, are applied on the hosted Neo project `hsfbuaefataujdzglexm`.
 
 The Expo tables `pets`, `memories`, `lifestyle_answers`, `future_snapshots`, and `missing_moments` are not part of this design and are not modified.
 
@@ -27,7 +27,7 @@ A client cannot attach its moment to another account's pet by sending that pet's
 
 Authenticated clients no longer have `DELETE` on the companion tables. Favorite changes and photo replacement still use `UPDATE` and `INSERT`. A moment's photo list is replaced by `companion_replace_moment_media`, which keeps `auth.uid()` as the owner and queues paths that the new list dropped. `companion_abandon_empty_moment` deletes a moment only when that caller owns it and it has no photo rows.
 
-`delete-moment` and `delete-pet` are Edge Functions. They verify the caller's JWT, ignore any client-supplied owner id, record the object paths, delete those objects through the Storage API, and only then delete the row with the service role. A failed storage or row delete returns `incomplete` and leaves the job so the same call can be repeated. `cleanup-storage` deletes queued paths that are no longer referenced. `delete-account` uses the same path checks, then removes the owned rows and the auth user. None of these functions are deployed yet.
+`delete-moment` and `delete-pet` are Edge Functions. They verify the caller's JWT, ignore any client-supplied owner id, record the object paths, delete those objects through the Storage API, and only then delete the row with the service role. A failed storage or row delete returns `incomplete` and leaves the job so the same call can be repeated. `cleanup-storage` deletes queued paths that are no longer referenced. `delete-account` uses the same path checks, then removes the owned rows and the auth user. `delete-moment`, `delete-pet`, `cleanup-storage`, and `delete-account` are deployed on the hosted Neo project with JWT verification enabled.
 
 ## Ownership model
 
