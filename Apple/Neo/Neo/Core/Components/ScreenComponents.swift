@@ -18,6 +18,18 @@ struct ScreenScaffold<Content: View>: View {
     }
 }
 
+struct NeoLogoMark: View {
+    var maxWidth: CGFloat = 200
+
+    var body: some View {
+        Image("NeoLogo")
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: maxWidth)
+            .accessibilityLabel("Neo")
+    }
+}
+
 struct EmptyStateView: View {
     var title: String
     var message: String

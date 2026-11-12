@@ -231,6 +231,8 @@ struct PetProfileView: View {
 
     private var empty: some View {
         ScreenScaffold {
+            NeoLogoMark(maxWidth: 168)
+                .frame(maxWidth: .infinity)
             EmptyStateView(
                 title: "Their story starts here",
                 message: "Create a profile for the companion you want to remember.",

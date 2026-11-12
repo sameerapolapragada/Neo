@@ -63,9 +63,7 @@ struct SignInView: View {
     private var credentials: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: NeoSpacing.sm) {
-                Text("Neo")
-                    .font(NeoFont.displayName)
-                    .foregroundStyle(NeoColor.espresso)
+                NeoLogoMark()
                 Text("A scrapbook for the life you share.")
                     .font(NeoFont.body)
                     .foregroundStyle(NeoColor.warmBrown)
