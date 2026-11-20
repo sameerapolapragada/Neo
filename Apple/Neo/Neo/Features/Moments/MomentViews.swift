@@ -2,6 +2,7 @@ import SwiftUI
 
 enum MomentRoute: Hashable {
     case create(petId: UUID, ownerId: UUID)
+    case prompted(petId: UUID, ownerId: UUID, prefill: MomentDraftPrefill)
     case detail(momentId: UUID, petId: UUID, ownerId: UUID)
 }
 
@@ -10,13 +11,29 @@ struct PetMomentsView: View {
     @Bindable var viewModel: PetMomentsViewModel
     var editing: ProfileEditingDependencies
     var board: MomentBoard
+    var littleMomentReveal: Int = 0
     @State private var path = NavigationPath()
+    @State private var littleMoments = LittleMomentPresenter()
+    @State private var consumedLittleMomentReveal = 0
 
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: NeoSpacing.lg) {
                     header
+                    if let prompt = littleMoments.prompt, let pet = library.activePet, let draft = littleMoments.draft {
+                        LittleMomentCard(
+                            prompt: prompt,
+                            isAlternative: littleMoments.isAlternative,
+                            onCapture: {
+                                path.append(MomentRoute.prompted(petId: pet.id, ownerId: pet.ownerId, prefill: draft))
+                            },
+                            onAnother: { littleMoments.anotherIdea() },
+                            onDismiss: { littleMoments.dismissForToday() },
+                            onReturn: { littleMoments.returnToScheduled() }
+                        )
+                        .padding(.horizontal, NeoSpacing.screenMargin)
+                    }
                     MomentCategoryFilterBar(selection: viewModel.filter) { filter in
                         Task { await viewModel.apply(filter, pet: library.activePet) }
                     }
@@ -34,9 +51,21 @@ struct PetMomentsView: View {
             .onChange(of: board.changeToken) { _, _ in
                 Task { await viewModel.applyBoard() }
             }
+            .onChange(of: littleMomentReveal) { _, token in
+                guard token > consumedLittleMomentReveal, let pet = library.activePet else { return }
+                consumedLittleMomentReveal = token
+                littleMoments.refresh(ownerId: pet.ownerId, petId: pet.id, forceFeatured: true)
+            }
         }
         .task(id: library.activePet?.id) {
             path = NavigationPath()
+            if let pet = library.activePet {
+                let forceFeatured = littleMomentReveal > consumedLittleMomentReveal
+                consumedLittleMomentReveal = littleMomentReveal
+                littleMoments.refresh(ownerId: pet.ownerId, petId: pet.id, forceFeatured: forceFeatured)
+            } else {
+                littleMoments.clear()
+            }
             await viewModel.load(pet: library.activePet)
         }
     }
@@ -205,6 +234,8 @@ struct PetMomentsView: View {
         switch route {
         case .create(let petId, let ownerId):
             CreatePetMomentView(ownerId: ownerId, petId: petId, editing: editing, board: board)
+        case .prompted(let petId, let ownerId, let prefill):
+            CreatePetMomentView(ownerId: ownerId, petId: petId, editing: editing, board: board, prefill: prefill)
         case .detail(let momentId, let petId, let ownerId):
             if let pet = library.activePet, pet.id == petId, pet.ownerId == ownerId {
                 MemoryDetailView(momentId: momentId, pet: pet, editing: editing, board: board)
@@ -401,7 +432,8 @@ struct CreatePetMomentView: View {
         editing: ProfileEditingDependencies,
         moment: PetMoment? = nil,
         photoURLs: [UUID: URL] = [:],
-        board: MomentBoard? = nil
+        board: MomentBoard? = nil,
+        prefill: MomentDraftPrefill? = nil
     ) {
         let model: CreatePetMomentViewModel
         if let moment {
@@ -424,7 +456,8 @@ struct CreatePetMomentView: View {
                 moments: editing.moments,
                 uploader: editing.uploader,
                 storageCleanup: editing.storageCleanup,
-                board: board
+                board: board,
+                prefill: prefill
             )
         }
         _viewModel = State(initialValue: model)

@@ -20,6 +20,10 @@ struct AccountSettingsView: View {
             }
             .padding(.top, NeoSpacing.md)
 
+            if let ownerId = app.ownerId {
+                LittleMomentReminderSettings(ownerId: ownerId)
+            }
+
             NeoTextField(title: "Password", text: $password, isSecure: true)
                 .textContentType(.password)
                 .accessibilityLabel("Password to confirm account deletion")

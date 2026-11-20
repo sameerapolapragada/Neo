@@ -87,6 +87,8 @@ final class AppModel {
     private(set) var ownerId: UUID?
     private(set) var library: PetLibrary?
     var authError: String?
+    var littleMomentReveal = 0
+    private var pendingLittleMoment = false
     private var handledAuthURLs: Set<String> = []
     /// True only when the auth server accepted sign-out. Local cleanup does not set this.
     private(set) var remoteSessionRevoked = false
@@ -225,6 +227,7 @@ final class AppModel {
                 remoteFailure = SessionCleanup.remoteSignOutFailed
             }
         }
+        await LittleMomentReminderCoordinator.shared.cancelAll()
         await finishLocalSession()
         remoteSessionRevoked = revoked
         authError = remoteFailure
@@ -238,6 +241,7 @@ final class AppModel {
         }
         _ = try await dependencies.auth.signIn(email: email, password: password)
         try await dependencies.accountDeletion.deleteAuthenticatedAccount(password: password)
+        await LittleMomentReminderCoordinator.shared.cancelAll()
         await finishLocalSession()
         remoteSessionRevoked = false
         authError = SessionCleanup.accountDeleted
@@ -258,6 +262,24 @@ final class AppModel {
         self.library = library
         gate = .ready
         await library.refresh()
+        await LittleMomentReminderCoordinator.shared.reconcile(ownerId: ownerId)
+        if pendingLittleMoment {
+            pendingLittleMoment = false
+            littleMomentReveal += 1
+        }
+    }
+
+    func reconcileLittleMomentReminders() async {
+        let signedIn = gate == .ready ? ownerId : nil
+        await LittleMomentReminderCoordinator.shared.reconcile(ownerId: signedIn)
+    }
+
+    func openMomentsFromReminder() {
+        guard gate == .ready else {
+            pendingLittleMoment = true
+            return
+        }
+        littleMomentReveal += 1
     }
 
     private func finishLocalSession() async {

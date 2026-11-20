@@ -329,6 +329,7 @@ final class CreatePetMomentViewModel {
         uploader: any MediaUploading,
         storageCleanup: (any StorageCleaning)? = nil,
         board: MomentBoard? = nil,
+        prefill: MomentDraftPrefill? = nil,
         now: Date = .now
     ) {
         self.ownerId = ownerId
@@ -340,14 +341,18 @@ final class CreatePetMomentViewModel {
         self.uploader = uploader
         self.storageCleanup = storageCleanup
         self.board = board
+        let suggestedTitle = prefill?.title ?? ""
+        let suggestedCategory = prefill?.category ?? .daily
         self.baselineDate = now
-        self.baselineTitle = ""
+        self.baselineTitle = suggestedTitle
         self.baselineCaption = ""
-        self.baselineCategory = .daily
+        self.baselineCategory = suggestedCategory
         self.baselinePhotoIDs = []
         self.preservedFavorite = false
         self.preservedCreatedAt = nil
         self.originalPaths = []
+        self.title = suggestedTitle
+        self.category = suggestedCategory
         self.momentDate = now
     }
 

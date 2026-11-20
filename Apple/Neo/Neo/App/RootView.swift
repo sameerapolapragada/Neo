@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     var app: AppModel
     @State private var signIn = SignInViewModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -37,6 +38,20 @@ struct RootView: View {
         .task {
             await app.bootstrap()
         }
+        .onAppear {
+            LittleMomentNotificationRouter.shared.onOpen = {
+                app.openMomentsFromReminder()
+            }
+            LittleMomentNotificationRouter.shared.consumeIfNeeded()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await app.reconcileLittleMomentReminders() }
+        }
+        .onChange(of: app.gate) { _, gate in
+            guard gate == .ready else { return }
+            LittleMomentNotificationRouter.shared.consumeIfNeeded()
+        }
     }
 }
 
@@ -57,6 +72,12 @@ private struct NoticeView: View {
     }
 }
 
+enum NeoSection: Hashable {
+    case profile
+    case moments
+    case timeline
+}
+
 struct MainTabView: View {
     var app: AppModel
     var library: PetLibrary
@@ -65,6 +86,7 @@ struct MainTabView: View {
     @State private var momentsModel: PetMomentsViewModel
     @State private var timelineModel: MemoryTimelineViewModel
     @State private var board: MomentBoard
+    @State private var section: NeoSection = .profile
 
     init(app: AppModel, library: PetLibrary, dependencies: AppDependencies) {
         self.app = app
@@ -99,7 +121,7 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $section) {
             NavigationStack {
                 PetProfileView(
                     library: library,
@@ -110,12 +132,24 @@ struct MainTabView: View {
                 )
             }
             .tabItem { Label("Profile", systemImage: "pawprint") }
+            .tag(NeoSection.profile)
 
-            PetMomentsView(library: library, viewModel: momentsModel, editing: dependencies.editing, board: board)
-                .tabItem { Label("Moments", systemImage: "photo.on.rectangle.angled") }
+            PetMomentsView(
+                library: library,
+                viewModel: momentsModel,
+                editing: dependencies.editing,
+                board: board,
+                littleMomentReveal: app.littleMomentReveal
+            )
+            .tabItem { Label("Moments", systemImage: "photo.on.rectangle.angled") }
+            .tag(NeoSection.moments)
 
             MemoryTimelineView(library: library, viewModel: timelineModel, editing: dependencies.editing, board: board)
                 .tabItem { Label("Timeline", systemImage: "book.closed") }
+            .tag(NeoSection.timeline)
+        }
+        .onChange(of: app.littleMomentReveal) { _, token in
+            if token > 0 { section = .moments }
         }
         .tint(NeoColor.espresso)
         .toolbarBackground(NeoColor.cream, for: .tabBar)

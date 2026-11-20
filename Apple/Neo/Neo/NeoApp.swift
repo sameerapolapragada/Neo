@@ -1,8 +1,13 @@
 import SwiftUI
+import UserNotifications
 
 @main
 struct NeoApp: App {
     @State private var appModel = AppModel()
+
+    init() {
+        UNUserNotificationCenter.current().delegate = LittleMomentNotificationRouter.shared
+    }
 
     var body: some Scene {
         WindowGroup {
