@@ -86,6 +86,7 @@ actor InMemoryMomentRepository: MomentRepository {
         }
         var stored = moment
         stored.media = moment.media.inDisplayOrder()
+        stored.tags = MomentTag.sanitized(moment.tags)
         storage[moment.id] = stored
         return stored
     }

@@ -13,7 +13,7 @@ struct AccountSettingsView: View {
                 Text("Account")
                     .font(NeoFont.displayName)
                     .foregroundStyle(NeoColor.espresso)
-                Text("Deleting your account permanently removes your pets, moments, and photos. This can't be undone.")
+                Text("Deleting your account permanently removes your pets, moments, photos, check-ins, and weight history. This can't be undone.")
                     .font(NeoFont.body)
                     .foregroundStyle(NeoColor.warmBrown)
                     .fixedSize(horizontal: false, vertical: true)

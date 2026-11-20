@@ -7,6 +7,7 @@ struct AppDependencies {
     var pets: any PetRepository
     var moments: any MomentRepository
     var memories: any MemoryRepository
+    var wellness: (any PetWellnessRepository)? = nil
     var media: any MediaURLResolving
     var uploader: any MediaUploading
     var selection: any ActivePetStoring
@@ -22,6 +23,7 @@ struct AppDependencies {
             media: media,
             moments: moments,
             memories: memories,
+            wellness: wellness,
             momentDeletion: momentDeletion,
             petDeletion: petDeletion,
             storageCleanup: storageCleanup
@@ -48,6 +50,7 @@ extension AppDependencies {
             pets: SupabasePetRepository(client: client),
             moments: SupabaseMomentRepository(client: client),
             memories: SupabaseMemoryRepository(client: client),
+            wellness: SupabaseWellnessRepository(client: client),
             media: SignedMediaURLCache(signer: store),
             uploader: store,
             selection: UserDefaultsActivePetStore(),

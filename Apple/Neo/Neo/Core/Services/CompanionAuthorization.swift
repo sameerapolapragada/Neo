@@ -46,6 +46,29 @@ enum CompanionAuthorization {
         readPet(actor: actor, pet: pet)
     }
 
+    /// A paw check or weight entry is readable only by the owner of that pet.
+    static func readPetRecord(actor: UUID?, recordOwner: UUID, pet: Pet?) -> CompanionAccess {
+        guard let pet else { return .denied(.missingRecord) }
+        guard let actor else { return .denied(.anonymous) }
+        guard recordOwner == actor, pet.ownerId == actor else { return .denied(.notOwner) }
+        return .allowed
+    }
+
+    static func writePetRecord(
+        actor: UUID?,
+        recordOwner: UUID,
+        recordPetId: UUID,
+        pet: Pet?
+    ) -> CompanionAccess {
+        guard let pet else { return .denied(.missingRecord) }
+        guard recordPetId == pet.id else { return .denied(.forgedRelationship) }
+        return readPetRecord(actor: actor, recordOwner: recordOwner, pet: pet)
+    }
+
+    static func attachMomentTags(actor: UUID?, moment: PetMoment?, pet: Pet?) -> CompanionAccess {
+        readMoment(actor: actor, moment: moment, pet: pet)
+    }
+
     /// A moment is visible only when the caller owns both the moment and its pet.
     static func readMoment(actor: UUID?, moment: PetMoment?, pet: Pet?) -> CompanionAccess {
         guard let moment, let pet else { return .denied(.missingRecord) }

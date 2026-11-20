@@ -52,6 +52,7 @@ struct PetMoment: Identifiable, Equatable, Sendable {
     var momentDate: Date
     var isFavorite: Bool
     var media: [MomentMedia]
+    var tags: [MomentTag] = []
     var createdAt: Date
     var updatedAt: Date
 
@@ -99,8 +100,7 @@ enum MomentFeedSorting {
     ) -> MomentPage {
         guard limit > 0 else { return MomentPage(moments: [], nextCursor: nil) }
         let filtered = ordered(moments).filter { moment in
-            guard let category else { return true }
-            return moment.category == category
+            matches(moment, category: category, tag: nil)
         }
         let remaining: [PetMoment]
         if let cursor {
@@ -111,6 +111,20 @@ enum MomentFeedSorting {
         let slice = Array(remaining.prefix(limit))
         let next = slice.count == limit ? makeCursor(for: slice[slice.count - 1]) : nil
         return MomentPage(moments: slice, nextCursor: next)
+    }
+
+    static func matching(
+        _ moments: [PetMoment],
+        category: MomentCategory?,
+        tag: MomentTag?
+    ) -> [PetMoment] {
+        ordered(moments).filter { matches($0, category: category, tag: tag) }
+    }
+
+    static func matches(_ moment: PetMoment, category: MomentCategory?, tag: MomentTag?) -> Bool {
+        if let category, moment.category != category { return false }
+        if let tag, !moment.tags.contains(tag) { return false }
+        return true
     }
 
     static func makeCursor(for moment: PetMoment) -> MomentCursor {

@@ -56,12 +56,79 @@ struct EditPetProfileView: View {
                 text: $viewModel.breed,
                 identifier: "petBreed"
             )
-            EditProfileDateField(
+            EditProfilePickerField(
+                systemImage: "pawprint",
+                title: "Breed identification",
+                selection: $viewModel.breedIdentity,
+                identifier: "petBreedIdentity"
+            ) {
+                ForEach(BreedIdentity.allCases) { identity in
+                    Text(identity.title).tag(identity)
+                }
+            }
+            EditProfilePickerField(
+                systemImage: "person",
+                title: "Sex",
+                selection: $viewModel.sex,
+                identifier: "petSex"
+            ) {
+                ForEach(PetSex.allCases) { sex in
+                    Text(sex.title).tag(sex)
+                }
+            }
+            EditProfilePickerField(
+                systemImage: "heart",
+                title: "Spayed or neutered",
+                selection: $viewModel.reproductiveStatus,
+                identifier: "petReproductiveStatus"
+            ) {
+                ForEach(ReproductiveStatus.allCases) { status in
+                    Text(status.title).tag(status)
+                }
+            }
+            EditProfilePickerField(
+                systemImage: "ruler",
+                title: "Size",
+                selection: $viewModel.sizeCategory,
+                identifier: "petSize"
+            ) {
+                ForEach(PetSize.allCases) { size in
+                    Text(size.title).tag(size)
+                }
+            }
+            EditProfilePickerField(
                 systemImage: "gift",
-                title: "Birthday",
-                isSet: $viewModel.hasBirthday,
-                date: $viewModel.birthday
-            )
+                title: "Age",
+                selection: $viewModel.ageStatus,
+                identifier: "petAgeStatus"
+            ) {
+                ForEach(AgeStatus.allCases) { status in
+                    Text(status.title).tag(status)
+                }
+            }
+            .onChange(of: viewModel.ageStatus) { _, status in
+                viewModel.hasBirthday = status == .known
+            }
+            if viewModel.ageStatus == .known {
+                DatePicker("Birthday", selection: $viewModel.birthday, displayedComponents: .date)
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("petBirthday")
+            }
+            if viewModel.ageStatus == .approximate {
+                EditProfileTextField(
+                    systemImage: "clock",
+                    title: "Approximate age",
+                    text: $viewModel.approximateAge,
+                    error: viewModel.approximateError,
+                    footer: "For example, about 3 years",
+                    identifier: "petApproximateAge"
+                )
+            }
+            Text("Leave anything you are not sure about.")
+                .font(NeoFont.caption)
+                .foregroundStyle(NeoColor.warmBrown)
             EditProfileDateField(
                 systemImage: "house",
                 title: "Adoption date",

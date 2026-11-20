@@ -107,6 +107,12 @@ async function removeAccountObjects(admin, ownerId) {
 async function removeOwnedRecords(admin, ownerId) {
   const jobs = await admin.from("companion_deletion_jobs").delete().eq("owner_id", ownerId);
   if (jobs.error) return false;
+  const tags = await admin.from("companion_moment_tags").delete().eq("owner_id", ownerId);
+  if (tags.error) return false;
+  const checks = await admin.from("companion_paw_checks").delete().eq("owner_id", ownerId);
+  if (checks.error) return false;
+  const weights = await admin.from("companion_weight_entries").delete().eq("owner_id", ownerId);
+  if (weights.error) return false;
   const media = await admin.from("companion_moment_media").delete().eq("owner_id", ownerId);
   if (media.error) return false;
   const moments = await admin.from("companion_moments").delete().eq("owner_id", ownerId);

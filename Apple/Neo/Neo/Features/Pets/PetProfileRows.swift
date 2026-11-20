@@ -4,8 +4,9 @@ struct PetInfoRow: View {
     var systemImage: String
     var title: String
     var value: String
+    var isQuiet = false
 
-    private var isPlaceholder: Bool { value == PetProfileDisplay.missing }
+    private var isPlaceholder: Bool { isQuiet || value == PetProfileDisplay.missing }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: NeoSpacing.md) {

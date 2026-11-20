@@ -39,8 +39,9 @@ final class MemoryDetailViewModel {
     var loadError: String?
     var actionError: String?
 
-    /// Moments do not store tags. Empty means the chip row stays hidden.
-    var tags: [String] { [] }
+    var tags: [String] {
+        (moment?.tags ?? []).map(\.title)
+    }
 
     init(
         momentId: UUID,

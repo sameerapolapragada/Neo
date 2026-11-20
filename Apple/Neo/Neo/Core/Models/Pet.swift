@@ -60,6 +60,12 @@ struct Pet: Identifiable, Equatable, Sendable {
     var bio: String
     var favoriteToy: String?
     var isFavorite: Bool
+    var sex: PetSex = .unknown
+    var reproductiveStatus: ReproductiveStatus = .unknown
+    var ageStatus: AgeStatus = .unknown
+    var approximateAge: String?
+    var sizeCategory: PetSize = .unknown
+    var breedIdentity: BreedIdentity = .unknown
     var createdAt: Date
     var updatedAt: Date
 }
@@ -135,8 +141,8 @@ enum PetProfileDisplay {
     static let missing = "Not added"
 
     static func age(for pet: Pet, now: Date = .now, calendar: Calendar = .current) -> String {
-        guard let birthday = pet.birthday else { return missing }
-        return PetAge.description(from: birthday, now: now, calendar: calendar)
+        let line = PetProfileDetails.ageLine(for: pet, now: now, calendar: calendar)
+        return line == "Not sure" ? missing : line
     }
 
     static func birthday(for pet: Pet) -> String {

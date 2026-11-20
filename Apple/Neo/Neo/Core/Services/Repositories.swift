@@ -53,6 +53,16 @@ protocol MomentRepository: Sendable {
     func delete(id: UUID, ownerId: UUID) async throws
 }
 
+protocol PetWellnessRepository: Sendable {
+    func pawChecks(petId: UUID, ownerId: UUID) async throws -> [PawCheck]
+    func save(_ check: PawCheck, pet: Pet) async throws -> PawCheck
+    func weightEntries(petId: UUID, ownerId: UUID) async throws -> [WeightEntry]
+    func save(_ entry: WeightEntry, pet: Pet) async throws -> WeightEntry
+    func deleteWeight(id: UUID, petId: UUID, ownerId: UUID) async throws
+    func deletePet(id: UUID, ownerId: UUID) async throws
+    func deleteOwner(_ ownerId: UUID) async throws
+}
+
 protocol MemoryRepository: Sendable {
     func list(petId: UUID, ownerId: UUID) async throws -> [Memory]
     func upsert(_ memory: Memory) async throws -> Memory

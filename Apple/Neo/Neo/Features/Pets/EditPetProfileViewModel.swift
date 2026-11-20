@@ -12,6 +12,12 @@ struct EditPetDraft: Equatable {
     var favoriteToy = ""
     var personality = ""
     var hasReplacementPhoto = false
+    var sex: PetSex = .unknown
+    var reproductiveStatus: ReproductiveStatus = .unknown
+    var ageStatus: AgeStatus = .unknown
+    var approximateAge = ""
+    var sizeCategory: PetSize = .unknown
+    var breedIdentity: BreedIdentity = .unknown
 
     static func == (lhs: EditPetDraft, rhs: EditPetDraft) -> Bool {
         lhs.name == rhs.name
@@ -24,6 +30,12 @@ struct EditPetDraft: Equatable {
             && lhs.favoriteToy == rhs.favoriteToy
             && lhs.personality == rhs.personality
             && lhs.hasReplacementPhoto == rhs.hasReplacementPhoto
+            && lhs.sex == rhs.sex
+            && lhs.reproductiveStatus == rhs.reproductiveStatus
+            && lhs.ageStatus == rhs.ageStatus
+            && lhs.approximateAge == rhs.approximateAge
+            && lhs.sizeCategory == rhs.sizeCategory
+            && lhs.breedIdentity == rhs.breedIdentity
     }
 
     private static func sameDay(_ lhs: Date?, _ rhs: Date?) -> Bool {
@@ -61,11 +73,18 @@ final class EditPetProfileViewModel {
     var weightUnit: WeightUnit = .pounds
     var personality = ""
     var favoriteToy = ""
+    var sex: PetSex = .unknown
+    var reproductiveStatus: ReproductiveStatus = .unknown
+    var ageStatus: AgeStatus = .unknown
+    var approximateAge = ""
+    var sizeCategory: PetSize = .unknown
+    var breedIdentity: BreedIdentity = .unknown
     var photoJPEG: Data?
     var existingPhotoPath: String?
     var existingPhotoURL: URL?
     var photoError: String?
     var fieldErrors: [PetField: String] = [:]
+    var approximateError: String?
     var serverError: String?
     var isSaving = false
     var didSave = false
@@ -155,6 +174,12 @@ final class EditPetProfileViewModel {
             personality: personality
         )
         fieldErrors = errors
+        approximateError = nil
+        if ageStatus == .approximate,
+           approximateAge.trimmingCharacters(in: .whitespacesAndNewlines).count > PetProfileDetails.approximateAgeLimit {
+            approximateError = "Keep this to \(PetProfileDetails.approximateAgeLimit) characters"
+            return
+        }
         guard errors.isEmpty, let species else { return }
 
         isSaving = true
@@ -239,13 +264,29 @@ final class EditPetProfileViewModel {
         let personalityText = personality.trimmingCharacters(in: .whitespacesAndNewlines)
         let toy = favoriteToy.trimmingCharacters(in: .whitespacesAndNewlines)
         let chip = microchip.trimmingCharacters(in: .whitespacesAndNewlines)
+        let approximate = ageStatus == .approximate
+            ? PetProfileDetails.approximateAge(from: approximateAge)
+            : nil
+        let birthdayValue = ageStatus == .known && hasBirthday ? birthday : nil
+        let resolvedAge: AgeStatus = if birthdayValue != nil {
+            .known
+        } else if approximate != nil {
+            .approximate
+        } else {
+            .unknown
+        }
+        gender = PetLegacyGender.stored(
+            sex: sex,
+            reproductiveStatus: reproductiveStatus,
+            previous: gender
+        )
         return Pet(
             id: petId,
             ownerId: ownerId,
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             species: species,
             breed: breedText,
-            birthday: hasBirthday ? birthday : nil,
+            birthday: birthdayValue,
             gender: gender,
             adoptionDate: hasAdoptionDate ? adoptionDate : nil,
             weightValue: storedWeight,
@@ -255,6 +296,12 @@ final class EditPetProfileViewModel {
             bio: personalityText,
             favoriteToy: toy.isEmpty ? nil : toy,
             isFavorite: isFavorite,
+            sex: sex,
+            reproductiveStatus: reproductiveStatus,
+            ageStatus: resolvedAge,
+            approximateAge: approximate,
+            sizeCategory: sizeCategory,
+            breedIdentity: breedIdentity,
             createdAt: preservedCreatedAt ?? now,
             updatedAt: now
         )
@@ -277,6 +324,31 @@ final class EditPetProfileViewModel {
             hasBirthday = false
         }
         gender = pet.gender
+        sex = pet.sex
+        reproductiveStatus = pet.reproductiveStatus
+        if pet.sex == .unknown {
+            switch pet.gender {
+            case .male: sex = .male
+            case .female: sex = .female
+            case .neutered, .spayed, .unknown: break
+            }
+        }
+        if pet.reproductiveStatus == .unknown && (pet.gender == .neutered || pet.gender == .spayed) {
+            reproductiveStatus = .yes
+        }
+        sizeCategory = pet.sizeCategory
+        breedIdentity = pet.breedIdentity
+        if pet.birthday != nil {
+            ageStatus = .known
+            approximateAge = ""
+        } else if pet.ageStatus == .approximate,
+                  let storedAge = PetProfileDetails.approximateAge(from: pet.approximateAge ?? "") {
+            ageStatus = .approximate
+            approximateAge = storedAge
+        } else {
+            ageStatus = .unknown
+            approximateAge = ""
+        }
         if let adoptionDate = pet.adoptionDate {
             self.adoptionDate = adoptionDate
             hasAdoptionDate = true
@@ -308,7 +380,13 @@ final class EditPetProfileViewModel {
             weightUnit: weightUnit,
             favoriteToy: favoriteToy.trimmingCharacters(in: .whitespacesAndNewlines),
             personality: personality.trimmingCharacters(in: .whitespacesAndNewlines),
-            hasReplacementPhoto: photoJPEG != nil
+            hasReplacementPhoto: photoJPEG != nil,
+            sex: sex,
+            reproductiveStatus: reproductiveStatus,
+            ageStatus: ageStatus,
+            approximateAge: approximateAge.trimmingCharacters(in: .whitespacesAndNewlines),
+            sizeCategory: sizeCategory,
+            breedIdentity: breedIdentity
         )
     }
 

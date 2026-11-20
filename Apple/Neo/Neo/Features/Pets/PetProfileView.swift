@@ -78,10 +78,17 @@ struct PetProfileView: View {
                 NeoCard {
                     PetInfoRow(systemImage: "hourglass", title: "Age", value: PetProfileDisplay.age(for: pet))
                     PetInfoRow(systemImage: "gift", title: "Birthday", value: PetProfileDisplay.birthday(for: pet))
+                    PetInfoRow(systemImage: "person", title: "Sex", value: pet.sex.title, isQuiet: pet.sex == .unknown)
+                    PetInfoRow(systemImage: "heart", title: "Spayed or neutered", value: pet.reproductiveStatus.title, isQuiet: pet.reproductiveStatus == .unknown)
+                    PetInfoRow(systemImage: "ruler", title: "Size", value: pet.sizeCategory.title, isQuiet: pet.sizeCategory == .unknown)
+                    PetInfoRow(systemImage: "tag", title: "Breed", value: PetProfileDetails.breedLine(for: pet), isQuiet: pet.breedIdentity == .unknown && pet.breed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     PetInfoRow(systemImage: "scalemass", title: "Weight", value: PetProfileDisplay.weight(for: pet))
                     PetInfoRow(systemImage: "star", title: "Favorite toy", value: PetProfileDisplay.favoriteToy(for: pet))
                 }
                 .padding(.horizontal, NeoSpacing.screenMargin)
+
+                PetCareLinks(pet: pet, editing: editing)
+                    .padding(.horizontal, NeoSpacing.screenMargin)
 
                 quickStats(for: pet)
                     .padding(.horizontal, NeoSpacing.screenMargin)
@@ -146,7 +153,7 @@ struct PetProfileView: View {
                 viewModel.cancelDelete()
             }
         } message: {
-            Text("This deletes the pet and every memory saved for them, including their photos.")
+            Text("This deletes the pet, memories, photos, check-ins, and weight history.")
         }
     }
 

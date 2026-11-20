@@ -209,7 +209,10 @@ struct SupabaseMomentRepository: MomentRepository {
                 try? await abandonEmptyMoment(id: moment.id)
                 throw error
             }
-            return saved.moment(media: moment.media.inDisplayOrder())
+            let tags = try await replaceTags(MomentTag.sanitized(moment.tags), momentId: moment.id)
+            var result = saved.moment(media: moment.media.inDisplayOrder())
+            result.tags = tags
+            return result
         } catch {
             throw RepositoryErrorMapping.wrap(error)
         }
@@ -290,10 +293,39 @@ struct SupabaseMomentRepository: MomentRepository {
                 .value
         }
         let grouped = Dictionary(grouping: mediaRows, by: \.momentId)
+        let tags = try await tagsByMoment(ids: rows.map(\.id), ownerId: ownerId)
         return rows.map { row in
-            let media = (grouped[row.id] ?? []).map { $0.media() }
-            return row.moment(media: media)
+            var moment = row.moment(media: (grouped[row.id] ?? []).map { $0.media() })
+            moment.tags = tags[row.id] ?? []
+            return moment
         }
+    }
+
+    private func tagsByMoment(ids: [UUID], ownerId: UUID) async throws -> [UUID: [MomentTag]] {
+        guard !ids.isEmpty else { return [:] }
+        let rows: [MomentTagRow] = try await client
+            .from(SupabaseTable.momentTags)
+            .select("moment_id,tag_key,created_at")
+            .eq("owner_id", value: ownerId.uuidString.lowercased())
+            .in("moment_id", values: ids.map { $0.uuidString.lowercased() })
+            .order("created_at", ascending: true)
+            .execute()
+            .value
+        var grouped: [UUID: [MomentTag]] = [:]
+        for row in rows {
+            guard let tag = MomentTag.fromStored(row.tagKey) else { continue }
+            grouped[row.momentId, default: []].append(tag)
+        }
+        return grouped.mapValues(MomentTag.sanitized)
+    }
+
+    private func replaceTags(_ tags: [MomentTag], momentId: UUID) async throws -> [MomentTag] {
+        let params = ReplaceMomentTagsParams(momentId: momentId, tags: tags.map(\.rawValue))
+        let saved: [String] = try await client
+            .rpc("companion_replace_moment_tags", params: params)
+            .execute()
+            .value
+        return MomentTag.sanitized(saved.compactMap(MomentTag.fromStored))
     }
 
     private func replaceMedia(_ media: [MomentMedia], momentId: UUID, ownerId: UUID) async throws {

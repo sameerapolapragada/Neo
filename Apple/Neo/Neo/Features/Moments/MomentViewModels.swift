@@ -24,6 +24,7 @@ final class PetMomentsViewModel {
     private(set) var moments: [PetMoment] = []
     private(set) var coverURLs: [UUID: URL] = [:]
     private(set) var filter: MomentCategoryFilter = .all
+    private(set) var tagFilter: MomentTag?
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
     private(set) var canLoadMore = false
@@ -59,7 +60,7 @@ final class PetMomentsViewModel {
         if isLoading && moments.isEmpty { return .loading }
         if !didLoad && moments.isEmpty && loadError == nil { return .loading }
         if loadError != nil && moments.isEmpty { return .failed }
-        if moments.isEmpty && filter == .all { return .empty }
+        if moments.isEmpty && filter == .all && tagFilter == nil { return .empty }
         if moments.isEmpty { return .filteredEmpty }
         return .loaded
     }
@@ -88,13 +89,22 @@ final class PetMomentsViewModel {
             }
         }
         do {
-            let page = try await repository.page(
-                petId: pet.id,
-                ownerId: pet.ownerId,
-                category: filter.category,
-                cursor: nil,
-                limit: pageSize
-            )
+            let page: MomentPage
+            if tagFilter != nil {
+                let all = try await repository.list(petId: pet.id, ownerId: pet.ownerId)
+                page = MomentPage(
+                    moments: MomentFeedSorting.matching(all, category: filter.category, tag: tagFilter),
+                    nextCursor: nil
+                )
+            } else {
+                page = try await repository.page(
+                    petId: pet.id,
+                    ownerId: pet.ownerId,
+                    category: filter.category,
+                    cursor: nil,
+                    limit: pageSize
+                )
+            }
             guard generation == loadGeneration else { return }
             moments = page.moments
             nextCursor = page.nextCursor
@@ -124,8 +134,21 @@ final class PetMomentsViewModel {
         await load(pet: pet)
     }
 
+    func apply(tag: MomentTag?, pet: Pet?) async {
+        guard tag != tagFilter else { return }
+        tagFilter = tag
+        moments = []
+        coverURLs = [:]
+        nextCursor = nil
+        canLoadMore = false
+        didLoad = false
+        loadError = nil
+        await load(pet: pet)
+    }
+
     func loadMore() async {
         guard
+            tagFilter == nil,
             canLoadMore,
             !isLoading,
             !isLoadingMore,
@@ -200,8 +223,7 @@ final class PetMomentsViewModel {
     }
 
     private func matches(_ moment: PetMoment) -> Bool {
-        guard let category = filter.category else { return true }
-        return moment.category == category
+        MomentFeedSorting.matches(moment, category: filter.category, tag: tagFilter)
     }
 
     @discardableResult
@@ -280,6 +302,7 @@ final class CreatePetMomentViewModel {
     private let baselineTitle: String
     private let baselineCaption: String
     private let baselineCategory: MomentCategory
+    private let baselineTags: [MomentTag]
     private let baselinePhotoIDs: [UUID]
     private let preservedFavorite: Bool
     private let preservedCreatedAt: Date?
@@ -289,6 +312,7 @@ final class CreatePetMomentViewModel {
     var caption = ""
     var momentDate = Date()
     var category: MomentCategory = .daily
+    var tags: [MomentTag] = []
     private(set) var photos: [MomentPhotoDraft] = []
     var fieldErrors: [MomentField: String] = [:]
     var photoError: String?
@@ -310,6 +334,7 @@ final class CreatePetMomentViewModel {
             return title != baselineTitle
                 || caption != baselineCaption
                 || category != baselineCategory
+                || tags != baselineTags
                 || !Calendar.current.isDate(momentDate, inSameDayAs: baselineDate)
                 || photos.map(\.id) != baselinePhotoIDs
                 || photos.contains { $0.jpeg != nil }
@@ -318,6 +343,7 @@ final class CreatePetMomentViewModel {
             || !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !photos.isEmpty
             || category != .daily
+            || !tags.isEmpty
             || !Calendar.current.isDate(momentDate, inSameDayAs: baselineDate)
     }
 
@@ -347,6 +373,7 @@ final class CreatePetMomentViewModel {
         self.baselineTitle = suggestedTitle
         self.baselineCaption = ""
         self.baselineCategory = suggestedCategory
+        self.baselineTags = []
         self.baselinePhotoIDs = []
         self.preservedFavorite = false
         self.preservedCreatedAt = nil
@@ -380,6 +407,7 @@ final class CreatePetMomentViewModel {
         self.baselineTitle = moment.title
         self.baselineCaption = moment.caption
         self.baselineCategory = moment.category
+        self.baselineTags = MomentTag.sanitized(moment.tags)
         self.preservedFavorite = moment.isFavorite
         self.preservedCreatedAt = moment.createdAt
         let ordered = moment.media.inDisplayOrder()
@@ -389,6 +417,7 @@ final class CreatePetMomentViewModel {
         self.caption = moment.caption
         self.momentDate = moment.momentDate
         self.category = moment.category
+        self.tags = MomentTag.sanitized(moment.tags)
         self.photos = ordered.map { item in
             MomentPhotoDraft(
                 id: item.id,
@@ -572,6 +601,7 @@ final class CreatePetMomentViewModel {
             momentDate: momentDate,
             isFavorite: preservedFavorite,
             media: media,
+            tags: MomentTag.sanitized(tags),
             createdAt: preservedCreatedAt ?? now,
             updatedAt: now
         )

@@ -16,6 +16,12 @@ struct PetRow: Codable, Sendable {
     var bio: String
     var favoriteToy: String?
     var isFavorite: Bool
+    var sex: String
+    var reproductiveStatus: String
+    var ageStatus: String
+    var approximateAge: String?
+    var sizeCategory: String
+    var breedIdentity: String
     var createdAt: String
     var updatedAt: String
 
@@ -35,6 +41,12 @@ struct PetRow: Codable, Sendable {
         case bio = "personality"
         case favoriteToy = "favorite_toy"
         case isFavorite = "is_favorite"
+        case sex
+        case reproductiveStatus = "reproductive_status"
+        case ageStatus = "age_status"
+        case approximateAge = "approximate_age"
+        case sizeCategory = "size_category"
+        case breedIdentity = "breed_identity"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -55,6 +67,12 @@ struct PetRow: Codable, Sendable {
         bio = pet.bio
         favoriteToy = pet.favoriteToy
         isFavorite = pet.isFavorite
+        sex = pet.sex.rawValue
+        reproductiveStatus = pet.reproductiveStatus.rawValue
+        ageStatus = pet.ageStatus.rawValue
+        approximateAge = PetProfileDetails.approximateAge(from: pet.approximateAge ?? "")
+        sizeCategory = pet.sizeCategory.rawValue
+        breedIdentity = pet.breedIdentity.rawValue
         createdAt = SupabaseDates.timestamp(pet.createdAt)
         updatedAt = SupabaseDates.timestamp(pet.updatedAt)
     }
@@ -76,6 +94,12 @@ struct PetRow: Codable, Sendable {
             bio: bio,
             favoriteToy: favoriteToy,
             isFavorite: isFavorite,
+            sex: PetSex.fromStored(sex),
+            reproductiveStatus: ReproductiveStatus.fromStored(reproductiveStatus),
+            ageStatus: AgeStatus.fromStored(ageStatus),
+            approximateAge: approximateAge,
+            sizeCategory: PetSize.fromStored(sizeCategory),
+            breedIdentity: BreedIdentity.fromStored(breedIdentity),
             createdAt: SupabaseDates.parseTimestamp(createdAt) ?? .now,
             updatedAt: SupabaseDates.parseTimestamp(updatedAt) ?? .now
         )

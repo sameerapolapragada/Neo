@@ -37,6 +37,9 @@ struct PetMomentsView: View {
                     MomentCategoryFilterBar(selection: viewModel.filter) { filter in
                         Task { await viewModel.apply(filter, pet: library.activePet) }
                     }
+                    MomentTagFilterBar(selection: viewModel.tagFilter) { tag in
+                        Task { await viewModel.apply(tag: tag, pet: library.activePet) }
+                    }
                     feedContent
                 }
                 .padding(.vertical, NeoSpacing.lg)
@@ -281,6 +284,84 @@ struct MomentCategoryFilterBar: View {
     }
 }
 
+struct MomentTagFilterBar: View {
+    var selection: MomentTag?
+    var onSelect: (MomentTag?) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: NeoSpacing.sm) {
+                tagButton(title: "Any tag", selected: selection == nil, identifier: "momentTagAll") {
+                    onSelect(nil)
+                }
+                ForEach(MomentTag.allCases) { tag in
+                    tagButton(
+                        title: tag.title,
+                        selected: selection == tag,
+                        identifier: "momentTag\(tag.rawValue)"
+                    ) {
+                        onSelect(selection == tag ? nil : tag)
+                    }
+                }
+            }
+            .padding(.horizontal, NeoSpacing.screenMargin)
+        }
+    }
+
+    private func tagButton(title: String, selected: Bool, identifier: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(NeoFont.caption.weight(.semibold))
+                .foregroundStyle(selected ? NeoColor.white : NeoColor.warmBrown)
+                .padding(.horizontal, NeoSpacing.md)
+                .frame(minHeight: 36)
+                .background(selected ? NeoColor.warmBrown : NeoColor.cream)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(NeoColor.subtleBeige, lineWidth: selected ? 0 : 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier(identifier)
+    }
+}
+
+struct MomentTagPicker: View {
+    var tags: [MomentTag]
+    var onToggle: (MomentTag) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: NeoSpacing.sm) {
+            Text("Tags")
+                .font(NeoFont.caption.weight(.semibold))
+                .foregroundStyle(NeoColor.warmBrown)
+            Text("Choose up to five. Tags are optional.")
+                .font(NeoFont.caption)
+                .foregroundStyle(NeoColor.warmBrown)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: NeoSpacing.sm)], spacing: NeoSpacing.sm) {
+                ForEach(MomentTag.allCases) { tag in
+                    let selected = tags.contains(tag)
+                    let enabled = selected || tags.count < MomentTag.maximumPerMoment
+                    Button {
+                        onToggle(tag)
+                    } label: {
+                        Text(tag.title)
+                            .font(NeoFont.caption.weight(.semibold))
+                            .foregroundStyle(selected ? NeoColor.white : NeoColor.espresso)
+                            .frame(maxWidth: .infinity, minHeight: NeoSpacing.minTapTarget)
+                            .background(selected ? NeoColor.espresso : NeoColor.white)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(NeoColor.subtleBeige, lineWidth: selected ? 0 : 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!enabled)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                    .accessibilityIdentifier("momentTagChoice\(tag.rawValue)")
+                }
+            }
+        }
+    }
+}
+
 struct MomentCardView: View {
     var moment: PetMoment
     var imageURL: URL?
@@ -496,6 +577,9 @@ struct CreatePetMomentView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                }
+                MomentTagPicker(tags: viewModel.tags) { tag in
+                    viewModel.tags = MomentTag.toggle(tag, in: viewModel.tags)
                 }
                 InlineErrorText(message: viewModel.saveError)
             }

@@ -5,6 +5,9 @@ enum SupabaseTable {
     static let pets = "companion_pets"
     static let moments = "companion_moments"
     static let momentMedia = "companion_moment_media"
+    static let momentTags = "companion_moment_tags"
+    static let pawChecks = "companion_paw_checks"
+    static let weightEntries = "companion_weight_entries"
     static let memories = "companion_memories"
     static let mediaBucket = "companion-pet-media"
 }
