@@ -156,7 +156,7 @@ final class SystemLittleMomentNotifications: LittleMomentNotificationScheduling,
     }
 }
 
-final class LittleMomentNotificationRouter: NSObject, UNUserNotificationCenterDelegate {
+final class LittleMomentNotificationRouter: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     static let shared = LittleMomentNotificationRouter()
 
     var onOpen: (@MainActor () -> Void)?

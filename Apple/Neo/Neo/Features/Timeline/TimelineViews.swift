@@ -140,6 +140,8 @@ struct MemoryTimelineView: View {
         switch route {
         case .create(let petId, let ownerId):
             CreatePetMomentView(ownerId: ownerId, petId: petId, editing: editing, board: board)
+        case .prompted(let petId, let ownerId, let prefill):
+            CreatePetMomentView(ownerId: ownerId, petId: petId, editing: editing, board: board, prefill: prefill)
         case .detail(let momentId, let petId, let ownerId):
             if let pet = library.activePet, pet.id == petId, pet.ownerId == ownerId {
                 MemoryDetailView(momentId: momentId, pet: pet, editing: editing, board: board)
