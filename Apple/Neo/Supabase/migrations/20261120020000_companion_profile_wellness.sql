@@ -57,6 +57,29 @@ set
     else 'unknown'
   end;
 
+-- Postgres rejects a subquery written directly inside a CHECK constraint.
+-- This function only inspects the array it is given.
+create or replace function public.companion_paw_observations_ok(observations text[])
+returns boolean
+language sql
+immutable
+set search_path = public
+as $$
+  select
+    cardinality(observations) <= 8
+    and observations <@ array[
+      'drinking_more', 'drinking_less', 'vomiting', 'loose_stool',
+      'scratching', 'limping', 'other', 'nothing_noticed'
+    ]::text[]
+    and cardinality(observations) = (
+      select count(distinct item) from unnest(observations) as item
+    )
+    and (
+      not ('nothing_noticed' = any (observations))
+      or cardinality(observations) <= 1
+    );
+$$;
+
 create table public.companion_paw_checks (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users (id) on delete cascade,
@@ -87,20 +110,7 @@ create table public.companion_paw_checks (
   constraint companion_paw_checks_source_check
     check (source in ('owner_reported')),
   constraint companion_paw_checks_observations_check
-    check (
-      cardinality(observations) <= 8
-      and observations <@ array[
-        'drinking_more', 'drinking_less', 'vomiting', 'loose_stool',
-        'scratching', 'limping', 'other', 'nothing_noticed'
-      ]::text[]
-      and cardinality(observations) = (
-        select count(distinct item) from unnest(observations) as item
-      )
-      and (
-        not ('nothing_noticed' = any (observations))
-        or cardinality(observations) <= 1
-      )
-    )
+    check (public.companion_paw_observations_ok(observations))
 );
 
 comment on table public.companion_paw_checks is
